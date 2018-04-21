@@ -1,6 +1,19 @@
 package base;
 
-import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_R;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
+import static org.lwjgl.glfw.GLFW.GLFW_RESIZABLE;
+import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
+import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
 import static org.lwjgl.glfw.GLFW.glfwCreateWindow;
 import static org.lwjgl.glfw.GLFW.glfwDefaultWindowHints;
 import static org.lwjgl.glfw.GLFW.glfwDestroyWindow;
@@ -26,13 +39,10 @@ import static org.lwjgl.opengl.GL11.glClearColor;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
-import java.awt.List;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
-import java.util.concurrent.SynchronousQueue;
 
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWErrorCallback;
@@ -48,17 +58,18 @@ import au.edu.federation.caliko.FabrikChain3D;
 import au.edu.federation.caliko.FabrikChain3D.BaseboneConstraintType3D;
 import au.edu.federation.caliko.FabrikJoint3D.JointType;
 import au.edu.federation.caliko.FabrikStructure3D;
+import au.edu.federation.caliko.visualisation.FabrikConstraint3D;
 import au.edu.federation.caliko.visualisation.FabrikLine3D;
-import au.edu.federation.caliko.visualisation.*;
+import au.edu.federation.caliko.visualisation.Point3D;
 import au.edu.federation.utils.Colour4f;
 import au.edu.federation.utils.Mat4f;
 import au.edu.federation.utils.Utils;
 import au.edu.federation.utils.Vec2f;
 import au.edu.federation.utils.Vec3f;
-import ik_hand_model.hand;
 
 public class IkSolver {
 
+	private static final String BROADCASTIP = "192.168.1.255";
 	// Define cardinal axes
 	static final Vec3f X_AXIS = new Vec3f(1.0f, 0.0f, 0.0f);
 	static final Vec3f Y_AXIS = new Vec3f(0.0f, 1.0f, 0.0f);
@@ -74,13 +85,13 @@ public class IkSolver {
 	// rivate Mat4f rotMat = new Mat4f();
 	private Mat4f transfMat = new Mat4f();
 	private Vec3f[] targets;
-	int WIDTH = 800;
-	int HEIGHT = 800; // Window width and height
+	int WIDTH = 640;
+	int HEIGHT = 480; // Window width and height
 	private BroadcastingClient bcPublisher;
 	// private ControlGUI controlWindow;
 	private boolean originCalibFlag = false;
 	private HandData handData = new HandData();
-	private java.util.List<Point3D> pointsList = new ArrayList<Point3D>();
+	
 
 	private long window; // Window handle
 	// 2D projection matrix. Params: Left, Right, Top, Bottom, Near, Far
@@ -122,15 +133,10 @@ public class IkSolver {
 	public void run() throws SocketException { // Create our chain
 
 		// TODO FIND CORRECT SCALE FOR MEASUREMENTS
-		// Measurement values in mm
-		// General assumptions
-		float boneLength = 5.0f;
 		// Depth offset corresponds to distance from camera to base of tracking volume
-		// in mm
+		// in cm
 		float depthOffset = 00.0f;
-		Vec3f boneDirection = new Vec3f(0.0f, 1.0f, .0f); // i.e. into the screen
-		// TODO BASEBONE of whole hand
-
+		Vec3f boneDirection = new Vec3f(0.0f, 1.0f, .0f); 
 		handBasePos = new Vec3f(0.0f, 0.0f, depthOffset);
 		Vec3f handBaseBoneStart = handBasePos;
 		Vec3f handBaseBoneEnd = new Vec3f(handBasePos.x, handBasePos.y + 0.01f, handBasePos.z);
@@ -138,20 +144,13 @@ public class IkSolver {
 		handBaseChain.addBone(handBase);
 		handBaseChain.setFixedBaseMode(true);
 		handStructureModel.addChain(handBaseChain);
-		// Add the chain to the structure, connecting to the end of bone 0 in chain 0
-		// structure.addConnectedChain(leftChain, 0, 0, BoneConnectionPoint2D.END);
 		Colour4f baseColor = new Colour4f(Utils.BLACK);
 		handBase.setColour(baseColor.lighten(0.4f));
 		handBaseChain.setFixedBaseMode(true);
 		// TODO BASEBONE constraints
-
-		// Setup finger Bases + consecutive Bones
-		// length convention 1 unit == 2mm
-		// Offset values based on measurements from handbone base
 		// Thumb------------------------------------------------------------
 		Vec3f thumbConStart = new Vec3f();
 		Vec3f thumbConEnd = new Vec3f(-15.5f, 8.0f, 0.0f);
-
 		FabrikBone3D thumbConnect = new FabrikBone3D(thumbConStart, thumbConEnd);
 		FabrikChain3D thumbConChain = new FabrikChain3D();
 		thumbConnect.setColour(baseColor);
@@ -210,7 +209,7 @@ public class IkSolver {
 		Vec3f middleFConStart = new Vec3f();
 		Vec3f middelfFConEnd = new Vec3f(0.0f, 10.0f, 0.0f);
 		Vec3f middleFBaseStart = new Vec3f();
-		Vec3f middleFBaseEnd = middleFBaseStart.plus(boneDirection.times(25.0f));
+		Vec3f middleFBaseEnd = middleFBaseStart.plus(boneDirection.times(5.0f));
 		FabrikBone3D middleFConnect = new FabrikBone3D(middleFConStart, middelfFConEnd);
 		middleFConnect.setColour(baseColor);
 		FabrikChain3D middleFConChain = new FabrikChain3D();
@@ -224,10 +223,10 @@ public class IkSolver {
 		middleF.addBone(middleFBase);
 		// middleF.setGlobalHingedBasebone(X_AXIS, 90, 0, Y_AXIS);
 		// middle PIP
-		middleF.addConsecutiveHingedBone(boneDirection, 15.75f, JointType.GLOBAL_HINGE, X_AXIS, 110, 0, Y_AXIS,
+		middleF.addConsecutiveHingedBone(boneDirection, 3f, JointType.GLOBAL_HINGE, X_AXIS, 110, 0, Y_AXIS,
 				cols[2].darken(0.4f));
 		// middle DIP
-		middleF.addConsecutiveHingedBone(boneDirection, 11.75f, JointType.GLOBAL_HINGE, X_AXIS, 90, 0, Y_AXIS,
+		middleF.addConsecutiveHingedBone(boneDirection, 2f, JointType.GLOBAL_HINGE, X_AXIS, 90, 0, Y_AXIS,
 				cols[2].lighten(0.4f));
 
 		fingers[2] = middleF;
@@ -388,7 +387,7 @@ public class IkSolver {
 		// TODO Add Button for System Start
 		try {
 			// Use loacal network broadcast address!!
-			bcPublisher.broadcast("Hello", InetAddress.getByName("192.168.1.255"));
+			bcPublisher.broadcast("Hello", InetAddress.getByName(BROADCASTIP));
 		} catch (Exception e) {
 			System.out.println("Could not send start signal to network, check Connection");
 			e.printStackTrace();
@@ -503,7 +502,7 @@ public class IkSolver {
 			mvpMatrix = mvpMatrix.times(rotMat);
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_W)) {
-			;
+			
 			transfMat.setIdentity();
 			transfMat = transfMat.translate(0.0f, 0.0f, 0.10f);
 			mvpMatrix = mvpMatrix.times(transfMat);
@@ -521,19 +520,19 @@ public class IkSolver {
 			mvpMatrix = mvpMatrix.times(transfMat);
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_D)) {
-			;
+			
 			transfMat.setIdentity();
 			transfMat = transfMat.translate(-0.10f, 0.0f, 0.0f);
 			mvpMatrix = mvpMatrix.times(transfMat);
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_R)) {
-			;
+			
 			transfMat.setIdentity();
 			transfMat = transfMat.translate(0.0f, -0.10f, 0.0f);
 			mvpMatrix = mvpMatrix.times(transfMat);
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_F)) {
-			;
+			
 			transfMat.setIdentity();
 			transfMat = transfMat.translate(0.0f, 0.10f, 0.0f);
 			mvpMatrix = mvpMatrix.times(transfMat);
@@ -564,7 +563,6 @@ public class IkSolver {
 		// Set the clear color
 		glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
 
-		Vec3f target = new Vec3f(0.0f, 20.0f, 90.0f);
 		// Run the rendering loop until the user has attempted to close
 		// the window or has pressed the ESCAPE key.
 		// System.out.println(handData.getCurrentFingerPos());
@@ -574,14 +572,17 @@ public class IkSolver {
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear buffers
 			// draw finger Chains
 
-			for (int i = 0; i < fingers.length - 1; i++) {
+			for (int i = 0; i < fingers.length; i++) {
 				try {
 
 					try {
-						System.out.println("hdp:" + handData.getCurrentFingerPos()[0]);
+						
 						// fingers[i].updateEmbeddedTarget(handData.getCurrentFingerPos()[0]);
-						System.out.println(fingers[0].getEmbeddedTarget());
+						
 						fingers[i].updateEmbeddedTarget(handData.getCurrentFingerPos()[i]);
+						Point3D targetPoint= new Point3D();
+						System.out.println(handData.getCurrentFingerPos()[i]);
+						targetPoint.draw(handData.getCurrentFingerPos()[i], Utils.MAGENTA, 10.0f, mvpMatrix);
 					} catch (Exception e) {
 						// TODO Auto-generated catch block
 						System.out.println("not solved");
@@ -609,7 +610,7 @@ public class IkSolver {
 				// constraint.draw(fingers[i],1.5f, mvpMatrix);
 			}
 			// Chains with embedded targets solve for their own and ignore the Vector
-			handStructureModel.solveForTarget(new Vec3f());
+			//handStructureModel.solveForTarget(new Vec3f());
 			constraint.draw(handStructureModel, 5.0f, mvpMatrix);
 			FabrikLine3D.draw(handStructureModel, 3.0f, mvpMatrix);
 			glfwSwapBuffers(window); // Swap colour buf.

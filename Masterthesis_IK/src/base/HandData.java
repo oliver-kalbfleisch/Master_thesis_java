@@ -10,7 +10,6 @@ import au.edu.federation.utils.Vec3f;
 public class HandData {
 
 	private Vec3f calibrationHandOrignPos;
-	private Vec3f currentHandPos;
 	private Vec3f[] calibrationTrackerOrignPos;
 	private int numTrackers;
 	private Vec3f[] currentTrackerPos;
@@ -18,7 +17,6 @@ public class HandData {
 	public HandData() {
 		this.numTrackers = 6;
 		this.calibrationHandOrignPos = new Vec3f();
-		this.currentHandPos = new Vec3f();
 		this.currentTrackerPos = new Vec3f[numTrackers];
 		this.calibrationTrackerOrignPos = new Vec3f[numTrackers];
 		for (int i = 0; i < calibrationTrackerOrignPos.length; i++) {

@@ -204,12 +204,12 @@ public class StereoCalculator {
 				float yVal = Float.parseFloat(values[1].substring(1, values[1].length() - 1));
 				// TODO variable for clamping
 				xVal = (float) clamp(0.0, 640.0, (double) (xVal));
-				yVal = (float) clamp(0.0, 480.0, (double) (yVal));
+				yVal =(float) clamp(0.0, 480.0, (double) (yVal));
 				// TODO handle tracking loss with synchronization
 				//
 				/* if (xVal > 0.0f && yVal > 0.0f) { */
 				coordinateSet[i].x = (float) -(xVal - (cameraImageWidth / 2.0));
-				coordinateSet[i].y = -(float) (yVal - (cameraIamgeHeight / 2.0));
+				coordinateSet[i].y = (float) (yVal - (cameraIamgeHeight / 2.0));
 				// }
 			} catch (Exception e) {
 				System.out.println(e);
