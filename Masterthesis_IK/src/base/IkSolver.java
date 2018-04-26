@@ -432,6 +432,7 @@ public class IkSolver {
 		KeyboardHandler.isKeyDown(GLFW_KEY_ESCAPE);
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_ESCAPE)) {
 			glfwSetWindowShouldClose(window, true);
+			System.exit(0);
 		}
 		// //TODO -> Do stereo calc from Dataset
 		// Steps

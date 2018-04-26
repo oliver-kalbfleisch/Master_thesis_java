@@ -20,6 +20,12 @@ public class StereoCalculator {
 	private final int cameraImageWidth = 640;
 	private final int cameraIamgeHeight = 480;
 	private int zeroPlaneOffset = 90;
+	private OneEuroFilter oeurFilter;
+    private double frequency = 30; // Hz
+    private double mincutoff = 1.0; // FIXME
+    private double beta = 0.1;      // FIXME
+    private double dcutoff = 1.0;   // this one should be ok
+
 
 	public StereoCalculator(int numElements) {
 		this.resZ = new int[numElements];
@@ -31,6 +37,12 @@ public class StereoCalculator {
 			coordinateSetsLeft[i] = new Vec2f(0, 0);
 			coordinateSetsRight[i] = new Vec2f(0, 0);
 			resZ[i] = 0;
+		}
+		try {
+			oeurFilter= new OneEuroFilter(frequency, mincutoff, beta, dcutoff);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
 	}
 
@@ -287,6 +299,12 @@ public class StereoCalculator {
 		double disparity = rightX - leftX;
 		calculatedZDistance = k * (1.0 / (Math.pow(Math.abs(disparity), -z)));
 		// TODO Variable for min and max
+		try {
+			double filteredValue= oeurFilter.filter(calculatedZDistance);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		// Clamp depth ranges to known values of the tracking space
 		calculatedZDistance = clamp(0.0, 90.0, calculatedZDistance);
 		// TODO clamp distance delta to reasonable value
