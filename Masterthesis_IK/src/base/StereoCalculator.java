@@ -20,11 +20,19 @@ public class StereoCalculator {
 	private final int cameraImageWidth = 640;
 	private final int cameraIamgeHeight = 480;
 	private int zeroPlaneOffset = 90;
-	private OneEuroFilter oeurFilter;
+	private OneEuroFilter oeurFilterX;
+	private OneEuroFilter oeurFilterY;
+	private OneEuroFilter oeurFilterZ;
     private double frequency = 30; // Hz
-    private double mincutoff = 1.0; // FIXME
-    private double beta = 0.1;      // FIXME
-    private double dcutoff = 1.0;   // this one should be ok
+    private double mincutoffZ = 2.0; 
+    private double betaZ =0.001;     
+     
+    private double mincutoffY= 0.75; // FIXME
+    private double betaY = 5.0;      // FIXME
+    
+    private double mincutoffX = 1.0; // FIXME
+    private double betaX = 2.0;      // FIXME
+
 
 
 	public StereoCalculator(int numElements) {
@@ -39,7 +47,9 @@ public class StereoCalculator {
 			resZ[i] = 0;
 		}
 		try {
-			oeurFilter= new OneEuroFilter(frequency, mincutoff, beta, dcutoff);
+			oeurFilterZ= new OneEuroFilter(frequency, mincutoffZ, betaZ);
+			oeurFilterY= new OneEuroFilter(frequency, mincutoffY, betaY);
+			oeurFilterX= new OneEuroFilter(frequency, mincutoffX, betaX);
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -212,16 +222,20 @@ public class StereoCalculator {
 			String[] values = parts[i].split(",");
 			// Extract value by extractng substrngs at correct positions
 			try {
-				float xVal = Float.parseFloat(values[0].substring(1));
-				float yVal = Float.parseFloat(values[1].substring(1, values[1].length() - 1));
+				int xVal = Integer.parseInt(values[0].substring(1));
+				int yVal = Integer.parseInt(values[1].substring(1, values[1].length() - 1));
 				// TODO variable for clamping
-				xVal = (float) clamp(0.0, 640.0, (double) (xVal));
-				yVal =(float) clamp(0.0, 480.0, (double) (yVal));
+				xVal = (int) clamp(0.0, 640.0, (double) (xVal));
+				yVal =(int) clamp(0.0, 480.0, (double) (yVal));
+				//filter Values
+				
+				//yVal=(float) oeurFilterY.filter(yVal);
 				// TODO handle tracking loss with synchronization
 				//
 				/* if (xVal > 0.0f && yVal > 0.0f) { */
-				coordinateSet[i].x = (float) -(xVal - (cameraImageWidth / 2.0));
-				coordinateSet[i].y = (float) (yVal - (cameraIamgeHeight / 2.0));
+				
+				coordinateSet[i].x = (float) oeurFilterX.filter( -(xVal - (cameraImageWidth / 2.0)));
+				coordinateSet[i].y = (float) oeurFilterY.filter((yVal - (cameraIamgeHeight / 2.0)));
 				// }
 			} catch (Exception e) {
 				System.out.println(e);
@@ -300,7 +314,7 @@ public class StereoCalculator {
 		calculatedZDistance = k * (1.0 / (Math.pow(Math.abs(disparity), -z)));
 		// TODO Variable for min and max
 		try {
-			double filteredValue= oeurFilter.filter(calculatedZDistance);
+			double filteredValue= oeurFilterZ.filter(calculatedZDistance);
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
