@@ -80,17 +80,16 @@ public class IkSolver {
 	private GLFWCursorPosCallback cpCallback;
 	private FabrikChain3D[] fingers = new FabrikChain3D[5];
 	private static Colour4f[] cols = new Colour4f[5];
-	// private Vec3f camPos = new Vec3f(0.0f, 0.0f, 0.0f);
-	// private Vec3f camRot = new Vec3f(0.0f, 0.0f, 0.0f);
-	// rivate Mat4f rotMat = new Mat4f();
 	private Mat4f transfMat = new Mat4f();
 	private Vec3f[] targets;
-	int WIDTH = 640;
-	int HEIGHT = 480; // Window width and height
+	static final int WIDTH = 640;
+	static final int HEIGHT = 480; // Window width and height
 	private BroadcastingClient bcPublisher;
-	// private ControlGUI controlWindow;
-	private boolean originCalibFlag = false;
 	private HandData handData = new HandData();
+
+	private long lastFrame;
+	private long lastFPS;
+	private int fps;
 
 	private long window; // Window handle
 	// 2D projection matrix. Params: Left, Right, Top, Bottom, Near, Far
@@ -99,8 +98,6 @@ public class IkSolver {
 
 	FabrikStructure3D handStructureModel = new FabrikStructure3D();
 	private Vec3f handBasePos;
-	private Vec3f handPosModification;
-
 	// Initialize fingers
 	// Thumb
 	FabrikChain3D thumb = new FabrikChain3D();
@@ -122,12 +119,6 @@ public class IkSolver {
 
 	// STEREO STUFF
 	StereoCalculator calc;
-	// CAlibration Stuff
-	private int numCalibrationSamples = 10;
-	private int calibrationSampleCounter = 0;
-
-	private Vec3f[] handOriginSamples = new Vec3f[numCalibrationSamples];
-	private Vec3f[][] fingerOrignSamples = new Vec3f[handData.getNumTrackedFingers()][numCalibrationSamples];
 
 	public void run() throws SocketException { // Create our chain
 
@@ -143,13 +134,10 @@ public class IkSolver {
 		handBase = new FabrikBone3D(handBaseBoneStart, handBaseBoneEnd);
 		handBaseChain.addBone(handBase);
 		handBaseChain.setFixedBaseMode(true);
-		// handBaseChain.setEmbeddedTargetMode(true);
-		// handBaseChain.updateEmbeddedTarget(handBaseBoneEnd);
 		handStructureModel.addChain(handBaseChain);
 		Colour4f baseColor = new Colour4f(Utils.BLACK);
 		handBase.setColour(baseColor.lighten(0.4f));
 		handBaseChain.setFixedBaseMode(true);
-		// TODO BASEBONE constraints
 		// Thumb------------------------------------------------------------
 		Vec3f thumbConStart = handBaseBoneEnd;
 		Vec3f thumbConEnd = new Vec3f(-15.5f, 8.0f * lenghtMultplier, 0.0f);
@@ -159,11 +147,9 @@ public class IkSolver {
 		thumbConnect.setBallJointConstraintDegs(0);
 		thumbConChain.addBone(thumbConnect);
 		thumbConChain.setFixedBaseMode(true);
-		//thumbConChain.setFreelyRotatingGlobalHingedBasebone(Y_AXIS);
 		handStructureModel.connectChain(thumbConChain, 0, 0, BoneConnectionPoint.END);
 
 		Vec3f thumbBaseStart = new Vec3f();
-		// Vec3f thumbBaseStart = new Vec3f();
 		Vec3f thumbBaseEnd = thumbBaseStart.plus(boneDirection.times(18.0f * lenghtMultplier));
 		// thumb MP
 		FabrikBone3D thumbBase = new FabrikBone3D(thumbBaseStart, thumbBaseEnd);
@@ -171,14 +157,12 @@ public class IkSolver {
 		thumbBase.setColour(cols[0].lighten(0.4f));
 		thumb.addBone(thumbBase);
 		// thumb PIP
-		// thumb.addConsecutiveBone(boneDirection, 14.50f*lenghtMultplier,
-		// cols[0].darken(0.4f));
 		thumb.addConsecutiveHingedBone(boneDirection, 14.50f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[0].darken(0.4f));
 		fingers[0] = thumb;
-		// thumb.setEmbeddedTargetMode(true);
 		thumb.setFixedBaseMode(true);
-		//thumb.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE, Y_AXIS, 0, 95, X_AXIS);
+		// thumb.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE,
+		// Y_AXIS, 0, 95, X_AXIS);
 		handStructureModel.connectChain(thumb, 1, 0, BoneConnectionPoint.END);
 		/*
 		 * 
@@ -200,7 +184,6 @@ public class IkSolver {
 		cols[1] = new Colour4f(Utils.BLUE);
 		indexFBase.setColour(cols[1].darken(0.4f));
 		indexF.addBone(indexFBase);
-		// indexF.setGlobalHingedBasebone(X_AXIS, 90, 0, Y_AXIS);
 		// index PIP
 		indexF.addConsecutiveHingedBone(boneDirection, 13.5f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[1].lighten(0.4f));
@@ -208,10 +191,9 @@ public class IkSolver {
 		indexF.addConsecutiveHingedBone(boneDirection, 11.75f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[1].darken(0.4f));
 		fingers[1] = indexF;
-		// indexF.setEmbeddedTargetMode(true);
 		indexF.setFixedBaseMode(true);
-		//indexF.setBaseLocation(indexConEnd);
-		//indexF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE, Y_AXIS, 5, 90, X_AXIS);
+		// indexF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE,
+		// Y_AXIS, 5, 90, X_AXIS);
 		handStructureModel.connectChain(indexF, 3, 0, BoneConnectionPoint.END);
 
 		// middle Finger------------------------------------------------------------
@@ -237,8 +219,8 @@ public class IkSolver {
 				Y_AXIS, cols[2].lighten(0.4f));
 
 		fingers[2] = middleF;
-		// middleF.setEmbeddedTargetMode(true);
-		//middleF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE, X_AXIS, 45, 95, Y_AXIS);
+		// middleF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE,
+		// X_AXIS, 45, 95, Y_AXIS);
 		middleF.setFixedBaseMode(true);
 		handStructureModel.connectChain(middleF, 5, 0, BoneConnectionPoint.END);
 
@@ -265,7 +247,8 @@ public class IkSolver {
 		ringF.addConsecutiveHingedBone(boneDirection, 12.25f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[3].darken(0.4f));
 		fingers[3] = ringF;
-		//ringF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE, X_AXIS, 45, 95, Y_AXIS);
+		// ringF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE,
+		// X_AXIS, 45, 95, Y_AXIS);
 		ringF.setFixedBaseMode(true);
 		handStructureModel.connectChain(ringF, 7, 0, BoneConnectionPoint.END);
 
@@ -293,7 +276,8 @@ public class IkSolver {
 		littleF.addConsecutiveHingedBone(boneDirection, 10.25f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[4].darken(0.4f));
 		fingers[4] = littleF;
-		//littleF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE, X_AXIS, 45, 95, Y_AXIS);
+		// littleF.setHingeBaseboneConstraint(BaseboneConstraintType3D.LOCAL_HINGE,
+		// X_AXIS, 45, 95, Y_AXIS);
 		littleF.setFixedBaseMode(true);
 
 		handStructureModel.connectChain(littleF, 9, 0, BoneConnectionPoint.END);
@@ -322,26 +306,20 @@ public class IkSolver {
 		transfMat = transfMat.translate(10.0f, -30.0f, -250.0f);
 		mvpMatrix = mvpMatrix.times(transfMat);
 
-		// handStructureModel.setFixedBaseMode(false);
-		// Init of UDP listening and data Calculation in seperate thread
-		// TODO Move to global var
+		// Init of UDP listening and data Calculation in separate thread
 		int numColors = 6;
 		calc = new StereoCalculator(numColors);
 		// // // Step one init UPD Listeners for both cameras
 		try {
 			calc.createUDPListener(8888, 0);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		try {
 			calc.createUDPListener(9999, 1);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
-		// TODO Position Calibration feature !!
 		// Init targets
 		targets = new Vec3f[numColors];
 		for (int i = 0; i < targets.length; i++) {
@@ -400,17 +378,12 @@ public class IkSolver {
 	}
 
 	public void updateStructurePos(FabrikStructure3D structure, Vec3f handBasePos) {
-		// TODO calculate delta from Handbase position data
 		Vec3f delta = handBasePos;
 		Vec3f test = handBaseChain.getBaseLocation();
 		Vec3f.subtract(handBasePos, test);
-		handPosModification = delta;
 		int numChains = structure.getNumChains();
 		for (int i = 0; i < numChains; i++) {
 			FabrikChain3D chain = structure.getChain(i);
-			// Vec3f baseLoc= chain.getBaseLocation();
-			// Vec3f.add(baseLoc, delta);
-			// chain.setBaseLocation(baseLoc);
 			for (int k = 0; k < chain.getNumBones(); k++) {
 				FabrikBone3D bone = chain.getBone(k);
 				Vec3f sl = bone.getStartLocation();
@@ -425,21 +398,11 @@ public class IkSolver {
 
 	public void update() throws SocketException {
 
-		if (KeyboardHandler.isKeyDown(GLFW_KEY_SPACE)) {
-			System.out.println("Space Key Pressed");
-			originCalibFlag = true;
-		}
 		KeyboardHandler.isKeyDown(GLFW_KEY_ESCAPE);
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_ESCAPE)) {
 			glfwSetWindowShouldClose(window, true);
 			System.exit(0);
 		}
-		// //TODO -> Do stereo calc from Dataset
-		// Steps
-		// 1) Get dataset from cameras
-		// 2) Calculate Z distance for each finger
-		// 3) generate 3d pos for each finger
-
 		try {
 			// Retrieve current Data
 			Vec2f[] rVec = calc.getDataset(0);
@@ -448,53 +411,13 @@ public class IkSolver {
 
 			for (int i = 0; i < rVec.length; i++) {
 
-				try {
-					// TODO ADD ORIGIN OFFSET CALC TO VALUE
-
-					float zDist = calc.calculateZDistance(0.075f, 62.2f, 640, rVec[i].x, lVec[i].x, targets[i].z);
-					targets[i] = new Vec3f(rVec[i].x, rVec[i].y, zDist);
-					handData.updateCurrentFingerPos(i, new Vec3f(rVec[i].x, rVec[i].y, zDist));
-					// Collect calibration Values
-
-					if (originCalibFlag == true) { // TODO HANDORIGN SETUP
-						System.out.println("Counter: " + calibrationSampleCounter);
-						System.out.println(fingerOrignSamples[i].length);
-						// TODO remove Hack ...
-						if (calibrationSampleCounter < numCalibrationSamples) {
-							fingerOrignSamples[i][calibrationSampleCounter] = targets[i];
-						}
-					}
-					// System.out.println(targets[i].toString());
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+				calculateDepthData(rVec, lVec, i);
 			}
-			// TODO decomment
-			// System.out.println("update");
-			// System.out.println("cp:"+handData.getCurrentFingerPos()[5]);
 			updateStructurePos(handStructureModel, handData.getCurrentFingerPos()[5]);
 
-			if (originCalibFlag) {
-				if (calibrationSampleCounter >= numCalibrationSamples) {
-					System.out.println("samples reached");
-					for (int j = 0; j < handData.getNumTrackedFingers(); j++) {
-						System.out.println("Calibrating Finger N. " + j);
-						handData.calibrateFingerOriginPos(j, fingerOrignSamples[j]);
-						System.out.println(handData.getCalibrationFingerOrignPos()[0]);
-
-					}
-					originCalibFlag = false;
-					calibrationSampleCounter = 0;
-				} else {
-					calibrationSampleCounter++;
-				}
-			}
-
-			// calibrationSampleCounter++;
 		} catch (Exception e) {
 
-			// System.out.println("No tracking data available");
+			System.out.println("No tracking data available");
 		}
 
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_Q)) {
@@ -523,7 +446,6 @@ public class IkSolver {
 			mvpMatrix = mvpMatrix.times(transfMat);
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_A)) {
-			;
 			transfMat.setIdentity();
 			transfMat = transfMat.translate(0.1f, 0.0f, 0.0f);
 			mvpMatrix = mvpMatrix.times(transfMat);
@@ -546,20 +468,23 @@ public class IkSolver {
 			transfMat = transfMat.translate(0.0f, 0.10f, 0.0f);
 			mvpMatrix = mvpMatrix.times(transfMat);
 		}
-		// if (KeyboardHandler.isKeyDown(GLFW_KEY_R)) {
-		// target.y -= 10;
-		// }
-		// if (KeyboardHandler.isKeyDown(GLFW_KEY_F)) {
-		// target.y += 10;
-		// }
-		// if (KeyboardHandler.isKeyDown(GLFW_KEY_T)) {
-		// target.z -= 10;
-		// }
-		// if (KeyboardHandler.isKeyDown(GLFW_KEY_G)) {
-		// target.z += 10;
-		// }
-		// TODO update targets
+	}
 
+	/**
+	 * @param rightSdeData
+	 * @param leftSideData
+	 * @param targetNumber
+	 */
+	private void calculateDepthData(Vec2f[] rightSdeData, Vec2f[] leftSideData, int targetNumber) {
+		try {
+			float zDist = calc.calculateZDistance(0.075f, 62.2f, 640, rightSdeData[targetNumber].x,
+					leftSideData[targetNumber].x, targets[targetNumber].z);
+			targets[targetNumber] = new Vec3f(rightSdeData[targetNumber].x, rightSdeData[targetNumber].y, zDist);
+			handData.updateCurrentFingerPos(targetNumber,
+					new Vec3f(rightSdeData[targetNumber].x, rightSdeData[targetNumber].y, zDist));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	private void loop() throws SocketException {
@@ -574,12 +499,12 @@ public class IkSolver {
 
 		// Run the rendering loop until the user has attempted to close
 		// the window or has pressed the ESCAPE key.
-		// System.out.println(handData.getCurrentFingerPos());
-		Vec3f[] targets = handData.getCurrentFingerPos();
+
+		// Vec3f[] targets = handData.getCurrentFingerPos();
 		FabrikConstraint3D constraint = new FabrikConstraint3D();
 		while (!glfwWindowShouldClose(window)) {
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear buffers
-			//Draw refernec coordinate system
+			// Draw refernec coordinate system
 			FabrikBone3D xbone = new FabrikBone3D(new Vec3f(0.0f, 0.0f, 0.0f), new Vec3f(1000.0f, 0.0f, 0.0f));
 			FabrikLine3D.draw(xbone, Utils.RED, 1.0f, mvpMatrix);
 			FabrikBone3D ybone = new FabrikBone3D(new Vec3f(0.0f, 0.0f, 0.0f), new Vec3f(0.0f, 1000.0f, 0.0f));
@@ -588,24 +513,9 @@ public class IkSolver {
 			FabrikLine3D.draw(zbone, Utils.GREEN, 1.0f, mvpMatrix);
 			//
 			for (int i = 0; i < fingers.length; i++) {
-				try {
+				drawTargetAndSolve(i);
 
-					try {
-						Point3D targetPoint = new Point3D();
-						targetPoint.draw(handData.getCurrentFingerPos()[i], Utils.MAGENTA, 10.0f, mvpMatrix);
-						handStructureModel.getChain(2 + (i * 2)).solveForTarget(handData.getCurrentFingerPos()[i]);
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						System.out.println("not solved");
-						e.printStackTrace();
-					}
-
-				} catch (Exception e) {
-					// System.out.println("could not solve for data");
-				}
 			}
-			// Chains with embedded targets solve for their own and ignore the Vector
-			//constraint.draw(handStructureModel, 5.0f, mvpMatrix);
 			FabrikLine3D.draw(handStructureModel, 3.0f, mvpMatrix);
 			glfwSwapBuffers(window); // Swap colour buf.
 
@@ -616,7 +526,42 @@ public class IkSolver {
 		}
 	}
 
+	/**
+	 * @param i
+	 */
+	private void drawTargetAndSolve(int i) {
+		try {
+			Point3D targetPoint = new Point3D();
+			targetPoint.draw(handData.getCurrentFingerPos()[i], Utils.MAGENTA, 10.0f, mvpMatrix);
+			handStructureModel.getChain(2 + (i * 2)).solveForTarget(handData.getCurrentFingerPos()[i]);
+		} catch (Exception e) {
+			System.out.println("not solved");
+			e.printStackTrace();
+		}
+	}
+
 	public static void main(String[] args) throws SocketException {
 		new IkSolver().run();
+	}
+
+	public int getDelta() {
+		long time = getTime();
+		int delta = (int) (time - lastFrame);
+		lastFrame = time;
+
+		return delta;
+	}
+
+	public long getTime() {
+		return System.nanoTime();
+	}
+
+	public void updateFPS() {
+		if (getTime() - lastFPS > 1000) {
+			System.out.println(fps);
+			fps = 0;
+			lastFPS += 1000;
+		}
+		fps++;
 	}
 }
