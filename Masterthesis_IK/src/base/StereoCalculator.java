@@ -17,21 +17,27 @@ public class StereoCalculator {
 	private static final ReentrantReadWriteLock lockLeft = new ReentrantReadWriteLock(true);
 	public volatile static String UDPMessageLeft, UDPMessageRight;
 	private static final ReentrantReadWriteLock lockRight = new ReentrantReadWriteLock(true);
-	private final int cameraImageWidth = 640;
-	private final int cameraIamgeHeight = 480;
+	private static final int cameraImageWidth = 640;
+	private static final int cameraImageHeight = 480;
 	private int zeroPlaneOffset = 90;
 	private OneEuroFilter oeurFilterX;
 	private OneEuroFilter oeurFilterY;
 	private OneEuroFilter oeurFilterZ;
-    private double frequency = 30; // Hz
-    private double mincutoffZ = 2.0; 
-    private double betaZ =0.001;     
+    private double frequency = 25; // Hz
+    private double mincutoffZ = 1.0; 
+    private double betaZ =0.007;     
      
     private double mincutoffY= 0.75; // FIXME
     private double betaY = 5.0;      // FIXME
     
     private double mincutoffX = 1.0; // FIXME
     private double betaX = 2.0;      // FIXME
+    
+//    private double mincutoffY= 1.0; // FIXME
+//    private double betaY = 0.00;      // FIXME
+//    
+//    public double mincutoffX = 1.0; // FIXME
+//    public double betaX = 0.01;      // FIXME
 
 
 
@@ -51,7 +57,6 @@ public class StereoCalculator {
 			oeurFilterY= new OneEuroFilter(frequency, mincutoffY, betaY);
 			oeurFilterX= new OneEuroFilter(frequency, mincutoffX, betaX);
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
@@ -91,10 +96,8 @@ public class StereoCalculator {
 			} catch (
 
 			SocketException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -147,10 +150,8 @@ public class StereoCalculator {
 			} catch (
 
 			SocketException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -168,16 +169,6 @@ public class StereoCalculator {
 
 	}
 
-	// public static void main(String[] args) throws IOException {
-	// StereoCalculator calc = new StereoCalculator(5);
-	// calc.createUDPListener(8888, 0);
-	// while (true) {
-	// calc.getDataset(0);
-	//
-	// }
-	//
-	// }
-
 	/**
 	 * Function creates a UDP Port to listen to for data from the camera of the
 	 * specified side
@@ -191,12 +182,12 @@ public class StereoCalculator {
 	public void createUDPListener(int port, int cameraSide) throws IOException {
 		switch (cameraSide) {
 		case 0:
-			// dSocketL = new DatagramSocket(port);
+			
 			Thread udpthreadLeft = new Thread(new UDPProcessThreadLeft(port, lockLeft));
 			udpthreadLeft.start();
 			break;
 		case 1:
-			// dSocketR = new DatagramSocket(port);
+			
 			Thread udpthreadRight = new Thread(new UDPProcessThreadRight(port, lockRight));
 			udpthreadRight.start();
 			break;
@@ -224,18 +215,11 @@ public class StereoCalculator {
 			try {
 				int xVal = Integer.parseInt(values[0].substring(1));
 				int yVal = Integer.parseInt(values[1].substring(1, values[1].length() - 1));
-				// TODO variable for clamping
 				xVal = (int) clamp(0.0, 640.0, (double) (xVal));
 				yVal =(int) clamp(0.0, 480.0, (double) (yVal));
 				//filter Values
-				
-				//yVal=(float) oeurFilterY.filter(yVal);
-				// TODO handle tracking loss with synchronization
-				//
-				/* if (xVal > 0.0f && yVal > 0.0f) { */
-				
 				coordinateSet[i].x = (float) oeurFilterX.filter( -(xVal - (cameraImageWidth / 2.0)));
-				coordinateSet[i].y = (float) oeurFilterY.filter((yVal - (cameraIamgeHeight / 2.0)));
+				coordinateSet[i].y = (float) oeurFilterY.filter((yVal - (cameraImageHeight / 2.0)));
 				// }
 			} catch (Exception e) {
 				System.out.println(e);
@@ -321,8 +305,6 @@ public class StereoCalculator {
 		}
 		// Clamp depth ranges to known values of the tracking space
 		calculatedZDistance = clamp(0.0, 90.0, calculatedZDistance);
-		// TODO clamp distance delta to reasonable value
-		// deltaZ = Math.abs(currentZ - calculatedZDistance);
 		// TODO Catch NaN
 		return (float) -calculatedZDistance + zeroPlaneOffset;
 

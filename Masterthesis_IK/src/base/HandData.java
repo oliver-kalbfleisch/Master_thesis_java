@@ -1,5 +1,7 @@
 package base;
 
+import org.joml.Vector3f;
+
 import au.edu.federation.utils.Vec3f;
 
 /**
@@ -9,20 +11,14 @@ import au.edu.federation.utils.Vec3f;
  */
 public class HandData {
 
-	private Vec3f calibrationHandOrignPos;
-	private Vec3f[] calibrationTrackerOrignPos;
 	private int numTrackers;
 	private Vec3f[] currentTrackerPos;
+	private Vector3f handBasePos;
 
-	public HandData() {
-		this.numTrackers = 6;
-		this.calibrationHandOrignPos = new Vec3f();
+	public HandData(int numTrackers) {
+		this.numTrackers = numTrackers;
 		this.currentTrackerPos = new Vec3f[numTrackers];
-		this.calibrationTrackerOrignPos = new Vec3f[numTrackers];
-		for (int i = 0; i < calibrationTrackerOrignPos.length; i++) {
-			calibrationTrackerOrignPos[i] = new Vec3f();
-			currentTrackerPos[i] = new Vec3f();
-		}
+		this.setHandBasePos(new Vector3f());
 	}
 
 	/**
@@ -36,58 +32,9 @@ public class HandData {
 	 * @return the new calculated 3d postion
 	 */
 	public Vec3f updateCurrentFingerPos(int fingerNum, Vec3f updatePos) {
-		Vec3f resultingPos = updatePos.minus(calibrationTrackerOrignPos[fingerNum]);
-		currentTrackerPos[fingerNum] = resultingPos;
+		currentTrackerPos[fingerNum] = updatePos;
+		return updatePos;
 
-		return resultingPos;
-
-	}
-	/**
-	 * 
-	 * @param positionData
-	 */
-
-	public void calibrateHandOriginPosition(Vec3f[] positionData)
-	{
-		Vec3f result= new Vec3f(0.0f,0.0f,0.0f);
-		
-		for(int i=0;i< positionData.length;i++)
-		{
-			result.plus(positionData[i]);
-		}
-		calibrationHandOrignPos= result.dividedBy(positionData.length);
-		System.out.println("Hand Origin positon calibrated: "+ calibrationHandOrignPos.toString());
-	}
-	/**
-	 * 
-	 * @param fingerNum
-	 */
-	public void calibrateFingerOriginPos(int fingerNum,Vec3f[]positionData)
-	{
-		Vec3f result= new Vec3f(0.0f,0.0f,0.0f);
-		
-		for(int i=0;i< positionData.length;i++)
-		{
-			result=result.plus(positionData[i]);
-		}
-		calibrationTrackerOrignPos[fingerNum]= result.dividedBy(positionData.length);
-		System.out.println("Finger offset for finger n."+fingerNum+" calibrated: "+calibrationTrackerOrignPos[fingerNum].toString());
-	}
-
-	public Vec3f getCalibrationHandOrignPos() {
-		return calibrationHandOrignPos;
-	}
-
-	public void setCalibrationHandOrignPos(Vec3f calibrationHandOrignPos) {
-		this.calibrationHandOrignPos = calibrationHandOrignPos;
-	}
-
-	public Vec3f[] getCalibrationFingerOrignPos() {
-		return calibrationTrackerOrignPos;
-	}
-
-	public void setCalibrationFingerOrignPos(Vec3f[] calibrationFingerOrignPos) {
-		this.calibrationTrackerOrignPos = calibrationFingerOrignPos;
 	}
 
 	public int getNumTrackedFingers() {
@@ -101,9 +48,16 @@ public class HandData {
 	public Vec3f[] getCurrentFingerPos() {
 		return currentTrackerPos;
 	}
-	//TODO  Adapt to new Finger Calibration procedure
 	public void setCurrentFingerPos(Vec3f[] currentFingerPos) {
 		this.currentTrackerPos = currentFingerPos;
+	}
+
+	public Vector3f getHandBasePos() {
+		return handBasePos;
+	}
+
+	public void setHandBasePos(Vector3f handBasePos) {
+		this.handBasePos = handBasePos;
 	}
 
 }
