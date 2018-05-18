@@ -3,13 +3,15 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
+import java.time.Instant;
+
 
 //TODO execute as separate thread !!!
 public class UDPReciever {
 	
 public static void main(String[] args) {
 	UDPReciever reciever= new UDPReciever();
-	reciever.setup("127.0.0.1",8888);
+	reciever.setup("192.168.1.255",9999);
 	
 }
 	
@@ -36,7 +38,6 @@ public void setup(String senderAdress, int port)
 			System.out.println(dPacket.getAddress().getHostName()+":"+msg);
 			 // Reset the length of the packet before reusing it.
 	        dPacket.setLength(buffer.length);
-			
 		}
 		
 		

@@ -10,41 +10,41 @@ import au.edu.federation.utils.Vec2f;
 
 public class StereoCalculator {
 	public int[] resZ;
-	private int UDPPortLeft;
-	private int UDPPortRight;
-	public Vec2f[] coordinateSetsLeft;
-	public Vec2f[] coordinateSetsRight;
+	private int udpPortLeft;
+	private int udpPortRight;
+	private Vec2f[] coordinateSetsLeft;
+	private Vec2f[] coordinateSetsRight;
 	private static final ReentrantReadWriteLock lockLeft = new ReentrantReadWriteLock(true);
-	public volatile static String UDPMessageLeft, UDPMessageRight;
+	public volatile static String udpMessageLeft, udpMessageRight;
 	private static final ReentrantReadWriteLock lockRight = new ReentrantReadWriteLock(true);
-	private static final int cameraImageWidth = 640;
-	private static final int cameraImageHeight = 480;
+	private static final int CAMERA_IMAGE_WIDTH = 640;
+	private static final int CAMERA_IMAGE_HEIGHT = 480;
+	private long epochRight = 0;
+	private long epochLeft = 0;
+	private int delta =80s;
+	private static long threadTimingDelta = 0;
 	private int zeroPlaneOffset = 90;
 	private OneEuroFilter oeurFilterX;
 	private OneEuroFilter oeurFilterY;
 	private OneEuroFilter oeurFilterZ;
-    private double frequency = 25; // Hz
-    private double mincutoffZ = 1.0; 
-    private double betaZ =0.007;     
-     
-    private double mincutoffY= 0.75; // FIXME
-    private double betaY = 5.0;      // FIXME
-    
-    private double mincutoffX = 1.0; // FIXME
-    private double betaX = 2.0;      // FIXME
-    
-//    private double mincutoffY= 1.0; // FIXME
-//    private double betaY = 0.00;      // FIXME
-//    
-//    public double mincutoffX = 1.0; // FIXME
-//    public double betaX = 0.01;      // FIXME
+	private static float xfreq, yfreq, zfreq;
+	Thread udpthreadLeft;
+	Thread udpthreadRight;
 
+	private double initialFrequency = 30; // Hz
+	private double mincutoffZ = 1.0;
+	private double betaZ = 0.0;
 
+	private double mincutoffY = 1.0;
+	private double betaY = 0.0007;
+
+	private double mincutoffX = 1.0;
+	private double betaX = 0.0007;
 
 	public StereoCalculator(int numElements) {
 		this.resZ = new int[numElements];
-		this.UDPPortLeft = 8888;
-		this.UDPPortRight = 9999;
+		this.udpPortLeft = 8888;
+		this.udpPortRight = 9999;
 		this.coordinateSetsLeft = new Vec2f[numElements];
 		this.coordinateSetsRight = new Vec2f[numElements];
 		for (int i = 0; i < coordinateSetsLeft.length; i++) {
@@ -53,16 +53,16 @@ public class StereoCalculator {
 			resZ[i] = 0;
 		}
 		try {
-			oeurFilterZ= new OneEuroFilter(frequency, mincutoffZ, betaZ);
-			oeurFilterY= new OneEuroFilter(frequency, mincutoffY, betaY);
-			oeurFilterX= new OneEuroFilter(frequency, mincutoffX, betaX);
+			oeurFilterZ = new OneEuroFilter(initialFrequency, mincutoffZ, betaZ);
+			oeurFilterY = new OneEuroFilter(initialFrequency, mincutoffY, betaY);
+			oeurFilterX = new OneEuroFilter(initialFrequency, mincutoffX, betaX);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
 
 	class UDPProcessThreadLeft implements Runnable {
-		private int UDPListenPort;
+		private int udpListenPort;
 		private boolean running = true;
 		private DatagramSocket dsocket;
 		private byte[] buffer;
@@ -70,8 +70,8 @@ public class StereoCalculator {
 		private ReentrantReadWriteLock lock;
 
 		public UDPProcessThreadLeft(int UDPPort, ReentrantReadWriteLock lock) throws SocketException {
-			this.UDPListenPort = UDPPort;
-			this.dsocket = new DatagramSocket(this.UDPListenPort);
+			this.udpListenPort = UDPPort;
+			this.dsocket = new DatagramSocket(this.udpListenPort);
 			this.buffer = new byte[1024];
 			this.packet = new DatagramPacket(buffer, buffer.length);
 			this.lock = lock;
@@ -86,13 +86,19 @@ public class StereoCalculator {
 					String msg = new String(buffer, 0, packet.getLength());
 					try {
 						lock.writeLock().lock();
-						StereoCalculator.UDPMessageLeft = msg;
+						epochLeft = Long.parseLong(msg.substring(msg.length() - 14, msg.length() - 1));
+
+						if (epochLeft - epochRight < delta) {
+							udpMessageLeft = msg;
+						}
+
 					} finally {
 						lock.writeLock().unlock();
 					}
+					// Reset the length of the packet before reusing it.
+					packet.setLength(buffer.length);
 				}
-				// Reset the length of the packet before reusing it.
-				packet.setLength(buffer.length);
+
 			} catch (
 
 			SocketException e) {
@@ -116,7 +122,7 @@ public class StereoCalculator {
 	}
 
 	class UDPProcessThreadRight implements Runnable {
-		private int UDPListenPort;
+		private int udpListenPort;
 		private boolean running = true;
 		private DatagramSocket dsocket;
 		private byte[] buffer;
@@ -124,8 +130,8 @@ public class StereoCalculator {
 		private ReentrantReadWriteLock lock;
 
 		public UDPProcessThreadRight(int UDPPort, ReentrantReadWriteLock lock) throws SocketException {
-			this.UDPListenPort = UDPPort;
-			this.dsocket = new DatagramSocket(this.UDPListenPort);
+			this.udpListenPort = UDPPort;
+			this.dsocket = new DatagramSocket(this.udpListenPort);
 			this.buffer = new byte[1024];
 			this.packet = new DatagramPacket(buffer, buffer.length);
 			this.lock = lock;
@@ -140,13 +146,20 @@ public class StereoCalculator {
 					String msg = new String(buffer, 0, packet.getLength());
 					try {
 						lock.writeLock().lock();
-						StereoCalculator.UDPMessageRight = msg;
+						epochRight = Long.parseLong(msg.substring(msg.length() - 14, msg.length() - 1));
+						if (epochLeft - epochRight > -delta) {
+							// System.out.println("rt:"+(epochLeft-epochRight));
+							udpMessageRight = msg;
+						}
+						;
+
 					} finally {
 						lock.writeLock().unlock();
 					}
+					// Reset the length of the packet before reusing it.
+					packet.setLength(buffer.length);
 				}
-				// Reset the length of the packet before reusing it.
-				packet.setLength(buffer.length);
+
 			} catch (
 
 			SocketException e) {
@@ -182,13 +195,13 @@ public class StereoCalculator {
 	public void createUDPListener(int port, int cameraSide) throws IOException {
 		switch (cameraSide) {
 		case 0:
-			
-			Thread udpthreadLeft = new Thread(new UDPProcessThreadLeft(port, lockLeft));
+
+			udpthreadLeft = new Thread(new UDPProcessThreadLeft(port, lockLeft));
 			udpthreadLeft.start();
 			break;
 		case 1:
-			
-			Thread udpthreadRight = new Thread(new UDPProcessThreadRight(port, lockRight));
+
+			udpthreadRight = new Thread(new UDPProcessThreadRight(port, lockRight));
 			udpthreadRight.start();
 			break;
 		default:
@@ -202,29 +215,38 @@ public class StereoCalculator {
 	 * from the input String
 	 * 
 	 * @param parts
-	 *            The split parts of the received UDP String message containig the
+	 *            The split parts of the received UDP String message containing the
 	 *            tracking data
 	 * @param coordinateSet
 	 *            The 2D vector into which the extracted data will be written
 	 */
-	private void processMessage(String[] parts, Vec2f[] coordinateSet) {
-		double t1 = System.nanoTime();
-		for (int i = 0; i < parts.length; i++) {
+	private void processMessage(String[] parts, Vec2f[] coordinateSet, long epoch) {
+		for (int i = 0; i < parts.length - 1; i++) {
 			String[] values = parts[i].split(",");
-			// Extract value by extractng substrngs at correct positions
+			// Extract value by extracting substrings at correct positions
 			try {
 				int xVal = Integer.parseInt(values[0].substring(1));
 				int yVal = Integer.parseInt(values[1].substring(1, values[1].length() - 1));
 				xVal = (int) clamp(0.0, 640.0, (double) (xVal));
-				yVal =(int) clamp(0.0, 480.0, (double) (yVal));
-				//filter Values
-				coordinateSet[i].x = (float) oeurFilterX.filter( -(xVal - (cameraImageWidth / 2.0)));
-				coordinateSet[i].y = (float) oeurFilterY.filter((yVal - (cameraImageHeight / 2.0)));
-				// }
+				yVal = (int) clamp(0.0, 480.0, (double) (yVal));
+				// filter Values
+				float currentX = (float) oeurFilterX.filter(-(xVal - (CAMERA_IMAGE_WIDTH / 2.0)));
+				float currentY = (float) oeurFilterY.filter((yVal - (CAMERA_IMAGE_HEIGHT / 2.0)));
+				//float currentX = (float) -(xVal - (CAMERA_IMAGE_WIDTH / 2.0));
+				//float currentY = (float) (yVal - (CAMERA_IMAGE_HEIGHT / 2.0));
+				// Filter out jumps in tracking data
+				coordinateSet[i].x = currentX;
+				coordinateSet[i].y = currentY;
 			} catch (Exception e) {
 				System.out.println(e);
 			}
 		}
+		// System.out.println("TimeDelta" + side + ": " + delta);
+	}
+	
+	private int calculateCameraUpdateFrequency(int side)
+	{
+		
 	}
 
 	/**
@@ -240,23 +262,22 @@ public class StereoCalculator {
 		// left camera
 		case 0:
 			lockLeft.readLock().lock();
-			String msgL = UDPMessageLeft;
+			String msgL = udpMessageLeft;
 			lockLeft.readLock().unlock();
 			String[] partsL = msgL.split(";");
-			processMessage(partsL, coordinateSetsLeft);
+			processMessage(partsL, coordinateSetsLeft, epochLeft);
 			return coordinateSetsLeft;
 		// right camera
 		case 1:
 			lockRight.readLock().lock();
-			String msgR = UDPMessageRight;
+			String msgR = udpMessageRight;
 			lockRight.readLock().unlock();
-
 			String[] partsR = msgR.split(";");
-			processMessage(partsR, coordinateSetsRight);
+			processMessage(partsR, coordinateSetsRight, epochRight);
 			return coordinateSetsRight;
 		default:
 			System.out.println("invalid camera input parameter " + cameraSide);
-			return null;
+			return new Vec2f[0];
 		}
 
 	}
@@ -266,48 +287,30 @@ public class StereoCalculator {
 	 * angle in degree v2 module x:62.2 y:48.8
 	 */
 	/**
-	 * Function calculates Z-Distance from the trviaacking values of the two cameras
 	 * 
-	 * @param stereoBaseDistance
-	 *            in m
-	 * @param cameraAngle
-	 *            in deg
-	 * @param numHorPix
+	 * @param rightX
+	 * @param leftX
 	 * @return
 	 */
-	public float calculateZDistance(float stereoBaseDistance, float cameraAngle, int numHorPix, float rightX,
-			float leftX, float currentZ)
+	// TODO use vector distance?
+	public float calculateZDistance(float rightX, float leftX)
 
 	{
 		double calculatedZDistance = 0.0f;
-		double deltaZ = 0.0f;
-		if (stereoBaseDistance == 0.0f) {
-			// distance default value for camera is 75mm which
-			// corresponds to a value from the range of the human interpupilary disitance
-			stereoBaseDistance = 0.075f;
-		}
-		if (cameraAngle == 0.0f) {
-			cameraAngle = 62.2f;
-		}
-
-		float alignmentCompensation = 0.0f;
 		// compensated Calculation formula Z=k*d^z
 		double k = 4543.320129238;
 		double z = -1.0354229928;
 		double disparity = rightX - leftX;
 		calculatedZDistance = k * (1.0 / (Math.pow(Math.abs(disparity), -z)));
-		// TODO Variable for min and max
 		try {
-			double filteredValue= oeurFilterZ.filter(calculatedZDistance);
+			calculatedZDistance = oeurFilterZ.filter(calculatedZDistance);
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		// Clamp depth ranges to known values of the tracking space
 		calculatedZDistance = clamp(0.0, 90.0, calculatedZDistance);
-		// TODO Catch NaN
+		// Coarse value Filtering
 		return (float) -calculatedZDistance + zeroPlaneOffset;
-
 	}
 
 	private double clamp(double min, double max, double value) {
@@ -316,19 +319,19 @@ public class StereoCalculator {
 	}
 
 	public int getUDPPortLeft() {
-		return UDPPortLeft;
+		return udpPortLeft;
 	}
 
 	public void setUDPPortLeft(int uDPPortLeft) {
-		UDPPortLeft = uDPPortLeft;
+		udpPortLeft = uDPPortLeft;
 	}
 
 	public int getUDPPortRight() {
-		return UDPPortRight;
+		return udpPortRight;
 	}
 
 	public void setUDPPortRight(int uDPPortRight) {
-		UDPPortRight = uDPPortRight;
+		udpPortRight = uDPPortRight;
 	}
 
 	public int[] getResZ() {
@@ -342,6 +345,14 @@ public class StereoCalculator {
 
 	public Vec2f[] getCoordinateSetsRight() {
 		return coordinateSetsRight;
+	}
+
+	public long getEpochRight() {
+		return epochRight;
+	}
+
+	public long getEpochLeft() {
+		return epochLeft;
 	}
 
 }
