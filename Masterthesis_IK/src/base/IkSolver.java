@@ -95,7 +95,7 @@ public class IkSolver {
 	private HandData handData = new HandData(6);
 	private Axis axis;
 	private Axis structureAxis;
-	private FabrikModel3D model;
+	private OBJModel3D model;
 	private long window; // Window handle
 	private Camera camera;
 	/** time at last frame */
@@ -108,7 +108,7 @@ public class IkSolver {
 
 	private Mat4f projectionMatrix = Mat4f.createPerspectiveProjectionMatrix(60.0f, (float) WIDTH / (float) HEIGHT,
 			1.0f, 10000.0f);
-	private Mat4f modelMatrx;
+	private Mat4f modelMatrix;
 	private Mat4f projectionViewMatrix;
 	private Mat4f viewMatrix = new Mat4f();
 	private FabrikStructure3D handStructureModel = new FabrikStructure3D();
@@ -242,7 +242,13 @@ public class IkSolver {
 			GL.createCapabilities();
 			axis = new Axis(1000.0f, 2.0f);
 			structureAxis = new Axis(10.0f, 5.0f);
-			model = new FabrikModel3D("/pyramid.obj", 1.0f);
+			
+			try {
+				model = new OBJModel3D("cylinder_2.obj", 1.0f);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -299,11 +305,7 @@ public class IkSolver {
 	 * @return
 	 */
 	private Vec3f setupHandBase(Colour4f baseColor) {
-		modelMatrx= new Mat4f();
-		modelMatrx.setIdentity();
 		handBasePos = new Vec3f(0.0f, 0.0f, depthOffset);
-		modelMatrx=modelMatrx.translate(handBasePos);
-		
 		Vec3f handBaseBoneEnd = new Vec3f(handBasePos.x, handBasePos.y + 0.01f * lenghtMultiplier, handBasePos.z);
 		handBase = new FabrikBone3D(handBasePos, handBaseBoneEnd);
 		handBaseChain.addBone(handBase);
