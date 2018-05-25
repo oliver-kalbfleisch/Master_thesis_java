@@ -108,11 +108,12 @@ public class IkSolver {
 
 	private Mat4f projectionMatrix = Mat4f.createPerspectiveProjectionMatrix(60.0f, (float) WIDTH / (float) HEIGHT,
 			1.0f, 10000.0f);
+	private Mat4f modelMatrx;
 	private Mat4f projectionViewMatrix;
 	private Mat4f viewMatrix = new Mat4f();
 	private FabrikStructure3D handStructureModel = new FabrikStructure3D();
-	private float lenghtMultiplier = 3.0f;
-	private float depthOffset = -2.0f;
+	private float lenghtMultiplier = 0.75f;
+	private float depthOffset = -0.0f;
 	private Vec3f boneDirection = new Vec3f(0.0f, 1.0f, .0f);
 	private Vec3f handBasePos;
 	private double pixelConversionFactorX;
@@ -208,8 +209,8 @@ public class IkSolver {
 		viewMatrix.setIdentity();
 		Mat4f rotMat = new Mat4f();
 		rotMat.setIdentity();
-		rotMat = rotMat.rotateAboutLocalAxisDegs(45, Y_AXIS);
-		viewMatrix = viewMatrix.translate(10.0f, -30.0f, -250.0f);
+		rotMat = rotMat.rotateAboutLocalAxisDegs(90, Y_AXIS);
+		viewMatrix = viewMatrix.translate(0.0f, 0.0f, -90.0f);
 		projectionViewMatrix = projectionMatrix.times(viewMatrix);
 		// Init of UDP listening and data Calculation in separate thread
 		int numColors = 6;
@@ -298,7 +299,11 @@ public class IkSolver {
 	 * @return
 	 */
 	private Vec3f setupHandBase(Colour4f baseColor) {
+		modelMatrx= new Mat4f();
+		modelMatrx.setIdentity();
 		handBasePos = new Vec3f(0.0f, 0.0f, depthOffset);
+		modelMatrx=modelMatrx.translate(handBasePos);
+		
 		Vec3f handBaseBoneEnd = new Vec3f(handBasePos.x, handBasePos.y + 0.01f * lenghtMultiplier, handBasePos.z);
 		handBase = new FabrikBone3D(handBasePos, handBaseBoneEnd);
 		handBaseChain.addBone(handBase);
@@ -402,8 +407,8 @@ public class IkSolver {
 				Y_AXIS, cols[1].darken(0.4f));
 		fingers[1] = indexF;
 		indexF.setFixedBaseMode(true);
-		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, 20.0f);
-		indexF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 15.0f);
+		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, 15.0f);
+		indexF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 20.0f);
 		handStructureModel.connectChain(indexF, 3, 0, BoneConnectionPoint.END);
 	}
 
@@ -512,8 +517,8 @@ public class IkSolver {
 		ringF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[3].darken(0.4f));
 		fingers[3] = ringF;
-		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, -15.0f);
-		ringF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 15.0f);
+		//Vec3f boneDirection = Vec3f.rotateZDegs(boneDirection, -15.0f);
+		ringF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, boneDirection, 15.0f);
 		ringF.setFixedBaseMode(true);
 		handStructureModel.connectChain(ringF, 7, 0, BoneConnectionPoint.END);
 	}
@@ -576,8 +581,8 @@ public class IkSolver {
 
 			
 			try {
-				//calculateRealDistance(handData.getCurrentFingerPos()[5]));
-				updateStructurePos(handStructureModel, handData.getCurrentFingerPos()[5]);
+				//System.out.println();
+				updateStructurePos(handStructureModel, calculateRealDistance(handData.getCurrentFingerPos()[5]));
 				//updateStructurePos(handStructureModel, calculateRealDistance(handData.getCurrentFingerPos()[5]));
 			} catch (Exception e2) {
 			}
@@ -668,10 +673,8 @@ public class IkSolver {
 	public Vec3f calculateRealDistance(Vec3f pixelPos) {
 		double height = pixelPos.z;
 		double correctionFactor = (90.0f - height) / 90.0f;
-		// System.out.println("cf:"+correctionFactor);
-		double correctedX = pixelConversionFactorX * correctionFactor;
-		// System.out.println("corr:"+corrected);
-		double correctedY = pixelConversionFactorY * correctionFactor;
+		double correctedX = pixelConversionFactorX * correctionFactor*pixelPos.x;
+		double correctedY = pixelConversionFactorY * correctionFactor*pixelPos.y;
 		return new Vec3f((float) correctedX, (float) correctedY, pixelPos.z);
 	}
 
@@ -700,9 +703,9 @@ public class IkSolver {
 				}
 			}
 			try {
-				// model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix,
-				// Utils.RED);
-				FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
+				 model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix,
+				 Utils.RED);
+				//FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block
 				System.out.println("hand model draw error");
@@ -710,7 +713,7 @@ public class IkSolver {
 				System.exit(0);
 			}
 			// DEBUG
-			constraint.draw(handStructureModel, 2.0f, projectionViewMatrix);
+			//constraint.draw(handStructureModel, 2.0f, projectionViewMatrix);
 			glfwSwapBuffers(window); // Swap color buff.
 
 			// Poll for window events. The key callback above will only be // invoked during
@@ -726,13 +729,14 @@ public class IkSolver {
 	private void drawTargetAndSolve(int i) {
 		try {
 			Point3D targetPoint = new Point3D();
-			try {
-
-				targetPoint.draw(handData.getCurrentFingerPos()[i], Utils.GREEN, 10.0f, projectionViewMatrix);
+			Vec3f currPos=calculateRealDistance(handData.getCurrentFingerPos()[i]);
+			try {	
+				targetPoint.draw(currPos, Utils.GREEN, 10.0f, projectionViewMatrix);
 			} catch (Exception e) {
 			}
+			
 			FabrikChain3D chainToSolveFor = handStructureModel.getChain(2 + (i * 2));
-			chainToSolveFor.solveForTarget(handData.getCurrentFingerPos()[i]);
+			chainToSolveFor.solveForTarget(currPos);
 		} catch (Exception e) {
 			// System.out.println("not solved");
 			// e.printStackTrace();

@@ -35,14 +35,14 @@ public class StereoCalculator {
 	protected Thread udpthreadRight;
 
 	private double frequency = 60; // Hz
-	private double mincutoffZ = 0.1;
+	private double mincutoffZ = 0.001;
 	private double betaZ = 0.001;
 
-	public double mincutoffY = 15; //0.05
-	private double betaY = 0.001; //0.08
+	public double mincutoffY = 0.001; //0.05
+	private double betaY = 5; //0.08
 
-	public double mincutoffX = 30;
-	private double betaX = 0;
+	public double mincutoffX = 0.001;
+	private double betaX = 5;
 
 	public StereoCalculator(int numElements) {
 		this.resZ = new int[numElements];
@@ -352,7 +352,7 @@ public class StereoCalculator {
 		calculatedZDistance = clamp(0.0, 90.0, calculatedZDistance);
 		// Coarse value Filtering
 		if (!Double.isNaN(calculatedZDistance)) {
-			return (float) (-calculatedZDistance + zeroPlaneOffset) * 10.0f;
+			return (float) (-calculatedZDistance + zeroPlaneOffset);
 		}
 		return 0.0f;
 	}
