@@ -47,6 +47,7 @@ import java.net.SocketException;
 import java.nio.IntBuffer;
 import java.util.concurrent.TimeUnit;
 
+import org.joml.Math;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWErrorCallback;
@@ -109,8 +110,14 @@ public class IkSolver {
 			1.0f, 10000.0f);
 	private Mat4f projectionViewMatrix;
 	private Mat4f viewMatrix = new Mat4f();
-	FabrikStructure3D handStructureModel = new FabrikStructure3D();
+	private FabrikStructure3D handStructureModel = new FabrikStructure3D();
+	private float lenghtMultiplier = 3.0f;
+	private float depthOffset = -2.0f;
+	private Vec3f boneDirection = new Vec3f(0.0f, 1.0f, .0f);
 	private Vec3f handBasePos;
+	private double pixelConversionFactorX;
+	private double pixelConversionFactorY;
+
 	// Initialize fingers
 	// Thumb
 	FabrikChain3D thumb = new FabrikChain3D();
@@ -154,165 +161,50 @@ public class IkSolver {
 	}
 
 	private void init() throws InterruptedException {
-		// TODO FIND CORRECT SCALE FOR MEASUREMENTS
-		// Depth offset corresponds to distance from camera to base of tracking volume
-		// in cm
-		float depthOffset = 00.0f;
-		float lenghtMultplier = 1.0f;
-		Vec3f boneDirection = new Vec3f(0.0f, 1.0f, .0f);
 
-		handBasePos = new Vec3f(0.0f, 0.0f, depthOffset);
-		Vec3f handBaseBoneStart = handBasePos;
-		Vec3f handBaseBoneEnd = new Vec3f(handBasePos.x, handBasePos.y + 0.01f, handBasePos.z);
-		handBase = new FabrikBone3D(handBaseBoneStart, handBaseBoneEnd);
-		handBaseChain.addBone(handBase);
-		handBaseChain.setFixedBaseMode(true);
-		handStructureModel.addChain(handBaseChain);
 		Colour4f baseColor = new Colour4f(Utils.BLACK);
-		handBase.setColour(baseColor.lighten(0.4f));
-		handBaseChain.setFixedBaseMode(true);
-		// Thumb------------------------------------------------------------
-		Vec3f thumbConStart = handBaseBoneEnd;
-		Vec3f thumbConEnd = new Vec3f(-15.5f, 0.0f * lenghtMultplier, 0.0f);
-		FabrikBone3D thumbConnect = new FabrikBone3D(thumbConStart, thumbConEnd);
-		FabrikChain3D thumbConChain = new FabrikChain3D();
-		thumbConnect.setColour(baseColor);
-		thumbConnect.setBallJointConstraintDegs(0);
-		thumbConChain.addBone(thumbConnect);
-		thumbConChain.setFixedBaseMode(true);
-		handStructureModel.connectChain(thumbConChain, 0, 0, BoneConnectionPoint.END);
+		
 
-		Vec3f thumbBaseStart = new Vec3f();
-		Vec3f thumbBaseEnd = thumbBaseStart.plus(boneDirection.times(30.0f * lenghtMultplier));
-		// thumb MP
-		FabrikBone3D thumbBase = new FabrikBone3D(thumbBaseStart, thumbBaseEnd);
-		cols[0] = new Colour4f(Utils.RED);
-		thumbBase.setColour(cols[0].lighten(0.4f));
-		thumb.addBone(thumbBase);
-		// thumb PIP
-		thumb.addConsecutiveHingedBone(boneDirection, 30.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[0].darken(0.4f));
-		fingers[0] = thumb;
-		thumb.setFixedBaseMode(true);
-		thumb.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, Y_AXIS, 35.0f);
-		handStructureModel.connectChain(thumb, 1, 0, BoneConnectionPoint.END);
-		/*
-		 * 
-		 */
-		// Index Finger----------------------------------------------------
-		Vec3f indexConStart = handBaseBoneEnd;
-		Vec3f indexConEnd = new Vec3f(-9.0f, 10.0f * lenghtMultplier, 0.0f);
-		Vec3f indexFBaseStart = new Vec3f();
-		Vec3f indexFBaseEnd = indexFBaseStart.plus(boneDirection.times(25.0f * lenghtMultplier));
-		FabrikBone3D indexConnect = new FabrikBone3D(indexConStart, indexConEnd);
-		indexConnect.setColour(baseColor);
-		FabrikChain3D indexConChain = new FabrikChain3D();
-		indexConChain.addBone(indexConnect);
-		indexConChain.setFixedBaseMode(true);
-		handStructureModel.addChain(indexConChain);
-		//
-		// index MP
-		FabrikBone3D indexFBase = new FabrikBone3D(indexFBaseStart, indexFBaseEnd);
-		cols[1] = new Colour4f(Utils.BLUE);
-		indexFBase.setColour(cols[1].darken(0.4f));
-		indexF.addBone(indexFBase);
-		// index PIP
-		indexF.addConsecutiveHingedBone(boneDirection, 23.5f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 110,
-				Y_AXIS, cols[1].lighten(0.4f));
-		// index DIP
-		indexF.addConsecutiveHingedBone(boneDirection, 22.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 90,
-				Y_AXIS, cols[1].darken(0.4f));
-		fingers[1] = indexF;
-		indexF.setFixedBaseMode(true);
-		//indexF.setHingeBaseboneConstraint(BaseboneConstraintType3D.GLOBAL_HINGE, X_AXIS, 90, 5, Y_AXIS);
-		indexF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, Y_AXIS, 15.0f);
-		handStructureModel.connectChain(indexF, 3, 0, BoneConnectionPoint.END);
+		Vec3f handBaseBoneEnd = setupHandBase(baseColor);
 
-		// middle Finger------------------------------------------------------------
-		Vec3f middleFConStart = handBaseBoneEnd;
-		Vec3f middelfFConEnd = new Vec3f(0.0f, 10.0f * lenghtMultplier, 0.0f);
-		Vec3f middleFBaseStart = new Vec3f();
-		Vec3f middleFBaseEnd = middleFBaseStart.plus(boneDirection.times(27.0f * lenghtMultplier));
-		FabrikBone3D middleFConnect = new FabrikBone3D(middleFConStart, middelfFConEnd);
-		middleFConnect.setColour(baseColor);
-		FabrikChain3D middleFConChain = new FabrikChain3D();
-		middleFConChain.addBone(middleFConnect);
-		handStructureModel.addChain(middleFConChain);
-		// middlef MP
-		FabrikBone3D middleFBase = new FabrikBone3D(middleFBaseStart, middleFBaseEnd);
-		cols[2] = new Colour4f(Utils.MID_BLUE);
-		middleFBase.setColour(cols[2].lighten(0.4f));
-		middleF.addBone(middleFBase);
-		// middle PIP
-		middleF.addConsecutiveHingedBone(boneDirection, 23.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[2].darken(0.4f));
-		// middle DIP
-		middleF.addConsecutiveHingedBone(boneDirection, 25f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[2].lighten(0.4f));
+		try {
+			setupThumb(handBaseBoneEnd, baseColor);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
 
-		fingers[2] = middleF;
-		//middleF.setHingeBaseboneConstraint(BaseboneConstraintType3D.GLOBAL_HINGE, X_AXIS, 90, 5, Y_AXIS);
-		middleF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, Y_AXIS, 15.0f);
-		middleF.setFixedBaseMode(true);
-		handStructureModel.connectChain(middleF, 5, 0, BoneConnectionPoint.END);
+		try {
+			setupIndexFinger(handBaseBoneEnd, baseColor);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
 
-		// ring finger------------------------------------------------------------
-		Vec3f ringFConnStart = handBaseBoneEnd;
-		Vec3f ringFConnEnd = new Vec3f(7.0f, 10.0f * lenghtMultplier, 0.0f);
-		Vec3f ringFBaseStart = new Vec3f();
-		Vec3f ringFBaseEnd = ringFBaseStart.plus(boneDirection.times(25.0f * lenghtMultplier));
-		FabrikBone3D ringFConnect = new FabrikBone3D(ringFConnStart, ringFConnEnd);
-		ringFConnect.setColour(baseColor);
-		FabrikChain3D ringFConChain = new FabrikChain3D();
-		ringFConChain.addBone(ringFConnect);
-		handStructureModel.addChain(ringFConChain);
-		// ring MP
-		FabrikBone3D ringFBase = new FabrikBone3D(ringFBaseStart, ringFBaseEnd);
-		cols[3] = new Colour4f(Utils.CYAN);
-		ringFBase.setColour(cols[3].darken(0.8f));
-		ringF.addBone(ringFBase);
-		// ring PIP
-		ringF.addConsecutiveHingedBone(boneDirection, 22.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[3].lighten(0.4f));
-		// ring DIP
-		ringF.addConsecutiveHingedBone(boneDirection, 23.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[3].darken(0.4f));
-		fingers[3] = ringF;
-		//ringF.setHingeBaseboneConstraint(BaseboneConstraintType3D.GLOBAL_HINGE, X_AXIS, 90, 5, Y_AXIS);
-		ringF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, Y_AXIS, 15.0f);
-		ringF.setFixedBaseMode(true);
-		handStructureModel.connectChain(ringF, 7, 0, BoneConnectionPoint.END);
+		try {
+			setupMiddleFinger(handBaseBoneEnd, baseColor);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
 
-		// little Finger
-		Vec3f littleFConStart = handBaseBoneEnd;
-		Vec3f littlefConEnd = new Vec3f(15.0f, 8.0f * lenghtMultplier, 0.0f);
-		Vec3f littleFBaseStart = new Vec3f();
-		Vec3f littleFBaseEnd = littleFBaseStart.plus(boneDirection.times(19.25f * lenghtMultplier));
-		FabrikBone3D littleFConnect = new FabrikBone3D(littleFConStart, littlefConEnd);
-		littleFConnect.setColour(baseColor);
-		FabrikChain3D littleFConChain = new FabrikChain3D();
-		littleFConChain.addBone(littleFConnect);
-		handStructureModel.addChain(littleFConChain);
+		try {
+			setupRingFinger(handBaseBoneEnd, baseColor);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
 
-		// little MP
-		FabrikBone3D littleFBase = new FabrikBone3D(littleFBaseStart, littleFBaseEnd);
-		cols[4] = new Colour4f(Utils.MAGENTA);
-		littleFBase.setColour(cols[4].darken(0.4f));
-		littleF.addBone(littleFBase);
+		try {
+			setupLittleFinger(handBaseBoneEnd, baseColor);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
 
-		// little PIP
-		littleF.addConsecutiveHingedBone(boneDirection, 16.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[4].lighten(0.4f));
-		// little DIP
-		littleF.addConsecutiveHingedBone(boneDirection, 22.0f * lenghtMultplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
-				Y_AXIS, cols[4].darken(0.4f));
-		fingers[4] = littleF;
-		//littleF.setHingeBaseboneConstraint(BaseboneConstraintType3D.GLOBAL_HINGE, X_AXIS, 90, 5, Y_AXIS);
-		littleF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, Y_AXIS, 15.0f);
-		littleF.setFixedBaseMode(true);
-
-		handStructureModel.connectChain(littleF, 9, 0, BoneConnectionPoint.END);
-
+		// calculate the real world distance one pixel covers at max depth
+		pixelConversionFactorX = (Math.tan(Math.toRadians(31.1f)) * 90) / 320.0f;
+		pixelConversionFactorY = (Math.tan(Math.toRadians(24.4f)) * 90) / 240.0f;
 		viewMatrix.setIdentity();
 		Mat4f rotMat = new Mat4f();
 		rotMat.setIdentity();
@@ -321,17 +213,12 @@ public class IkSolver {
 		projectionViewMatrix = projectionMatrix.times(viewMatrix);
 		// Init of UDP listening and data Calculation in separate thread
 		int numColors = 6;
-		calc = new StereoCalculator(numColors);
-		// // // Step one init UPD Listeners for both cameras
+		
 		try {
-			calc.createUDPListener(8888, 0);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		try {
-			calc.createUDPListener(9999, 1);
-		} catch (IOException e) {
-			e.printStackTrace();
+			setupStereoCalculator(numColors);
+		} catch (Exception e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
 		}
 
 		TimeUnit.SECONDS.sleep(2);
@@ -340,7 +227,32 @@ public class IkSolver {
 		for (int i = 0; i < targets.length; i++) {
 			targets[i] = new Vec3f(0, 0, 0);
 		}
+		glfwSetup();
 
+		try {
+			// Use loacal network broadcast address!!
+			BroadcastingClient.broadcast("master", InetAddress.getByName(BROADCASTIP));
+		} catch (Exception e) {
+			System.out.println("Could not send start signal to network, check Connection");
+			e.printStackTrace();
+		}
+		TimeUnit.SECONDS.sleep(5);
+		try {
+			GL.createCapabilities();
+			axis = new Axis(1000.0f, 2.0f);
+			structureAxis = new Axis(10.0f, 5.0f);
+			model = new FabrikModel3D("/pyramid.obj", 1.0f);
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			System.exit(0);
+		}
+	}
+
+	/**
+	 * 
+	 */
+	private void glfwSetup() {
 		// Setup an error callback. The default implementation // will print the error
 		// message in System.err.
 		GLFWErrorCallback.createPrint(System.err).set();
@@ -378,24 +290,232 @@ public class IkSolver {
 		glfwSwapInterval(1);
 		// Make the window visible
 		glfwShowWindow(window);
+	}
 
+	/**
+	 * @param depthOffset
+	 * @param baseColor
+	 * @return
+	 */
+	private Vec3f setupHandBase(Colour4f baseColor) {
+		handBasePos = new Vec3f(0.0f, 0.0f, depthOffset);
+		Vec3f handBaseBoneEnd = new Vec3f(handBasePos.x, handBasePos.y + 0.01f * lenghtMultiplier, handBasePos.z);
+		handBase = new FabrikBone3D(handBasePos, handBaseBoneEnd);
+		handBaseChain.addBone(handBase);
+		handBaseChain.setFixedBaseMode(true);
+		handStructureModel.addChain(handBaseChain);
+		handBase.setColour(baseColor.lighten(0.4f));
+		handBaseChain.setFixedBaseMode(true);
+		return handBaseBoneEnd;
+	}
+
+	/**
+	 * @param lenghtMultplier
+	 * @param boneDirection
+	 * @param handBaseBoneEnd
+	 * @param baseColor
+	 */
+	private void setupThumb(Vec3f handBaseBoneEnd, Colour4f baseColor) {
+		// Thumb------------------------------------------------------------
+		Vec3f thumbConEnd = new Vec3f(-4.0f * lenghtMultiplier, 0.0f* lenghtMultiplier, 0.0f);
+		FabrikBone3D thumbConnect = new FabrikBone3D(handBaseBoneEnd, thumbConEnd);
+		FabrikChain3D thumbConChain = new FabrikChain3D();
+		thumbConnect.setColour(baseColor);
+		thumbConnect.setBallJointConstraintDegs(0);
+		thumbConChain.addBone(thumbConnect);
+		thumbConChain.setFixedBaseMode(true);
+		handStructureModel.addChain(thumbConChain);
+		Vec3f thumbBaseStart = new Vec3f();
+		Vec3f thumbBaseEnd = thumbBaseStart.plus(thumbConnect.getDirectionUV().times(4.5f * lenghtMultiplier));
+		// thumb MP
+		FabrikBone3D thumbBase = new FabrikBone3D(thumbBaseStart, thumbBaseEnd);
+		cols[0] = new Colour4f(Utils.RED);
+		thumbBase.setColour(cols[0].lighten(0.4f));
+		thumb.setMaxIterationAttempts(10);
+		thumb.addBone(thumbBase);
+		// Thumb MP
+		thumb.addConsecutiveHingedBone(boneDirection, 3.5f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[0].darken(0.4f));
+		// thumb PIP
+		thumb.addConsecutiveHingedBone(boneDirection, 3.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[0].darken(0.4f));
+		fingers[0] = thumb;
+		thumb.setFixedBaseMode(true);
+		// umb.setLocalHingedBasebone(Y_AXIS, 90, 90, X_AXIS);
+		// thumb.setLocalHingedBasebone(boneDirection, 0, 90, X_AXIS);
+		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, 75.0f);
+		thumb.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 45.0f);
+		handStructureModel.connectChain(thumb, 1, 0, BoneConnectionPoint.END);
+
+	}
+
+	/**
+	 * @param numColors
+	 */
+	private void setupStereoCalculator(int numColors) {
+		calc = new StereoCalculator(numColors);
+		// // // Step one init UPD Listeners for both cameras
 		try {
-			// Use loacal network broadcast address!!
-			BroadcastingClient.broadcast("Hello", InetAddress.getByName(BROADCASTIP));
-		} catch (Exception e) {
-			System.out.println("Could not send start signal to network, check Connection");
+			calc.createUDPListener(8888, 0);
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		try {
-			GL.createCapabilities();
-			axis = new Axis(1000.0f, 2.0f);
-			structureAxis = new Axis(10.0f, 5.0f);
-			model = new FabrikModel3D("/pyramid.obj", 1.0f);
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
+			calc.createUDPListener(9999, 1);
+		} catch (IOException e) {
 			e.printStackTrace();
-			System.exit(0);
 		}
+	}
+
+	/**
+	 * @param lenghtMultplier
+	 * @param boneDirection
+	 * @param handBaseBoneEnd
+	 * @param baseColor
+	 */
+	private void setupIndexFinger(Vec3f handBaseBoneEnd, Colour4f baseColor) {
+		/*
+		 * 
+		 */
+		// Index Finger----------------------------------------------------
+		Vec3f indexConEnd = new Vec3f(-3.0f * lenghtMultiplier, 4.0f * lenghtMultiplier, 0.0f);
+		Vec3f indexFBaseStart = new Vec3f();
+		Vec3f indexFBaseEnd = indexFBaseStart.plus(boneDirection.times(5.0f * lenghtMultiplier));
+		FabrikBone3D indexConnect = new FabrikBone3D(handBaseBoneEnd, indexConEnd);
+		indexConnect.setColour(baseColor);
+		FabrikChain3D indexConChain = new FabrikChain3D();
+		indexConChain.addBone(indexConnect);
+		indexConChain.setFixedBaseMode(true);
+		handStructureModel.addChain(indexConChain);
+		//
+		// index MP
+		FabrikBone3D indexFBase = new FabrikBone3D(indexFBaseStart, indexFBaseEnd);
+		cols[1] = new Colour4f(Utils.BLUE);
+		indexFBase.setColour(cols[1].darken(0.4f));
+		indexF.setMaxIterationAttempts(10);
+		indexF.addBone(indexFBase);
+		// index PIP
+		indexF.addConsecutiveHingedBone(boneDirection, 3.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 110,
+				Y_AXIS, cols[1].lighten(0.4f));
+		// index DIP
+		indexF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 90,
+				Y_AXIS, cols[1].darken(0.4f));
+		fingers[1] = indexF;
+		indexF.setFixedBaseMode(true);
+		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, 20.0f);
+		indexF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 15.0f);
+		handStructureModel.connectChain(indexF, 3, 0, BoneConnectionPoint.END);
+	}
+
+	/**
+	 * @param lenghtMultplier
+	 * @param boneDirection
+	 * @param handBaseBoneEnd
+	 * @param baseColor
+	 */
+	private void setupLittleFinger(Vec3f handBaseBoneEnd, Colour4f baseColor) {
+		// little Finger
+		Vec3f littleFConStart = handBaseBoneEnd;
+		Vec3f littlefConEnd = new Vec3f(4.5f * lenghtMultiplier, 4.0f * lenghtMultiplier, 0.0f);
+		Vec3f littleFBaseStart = new Vec3f();
+		Vec3f littleFBaseEnd = littleFBaseStart.plus(boneDirection.times(4.0f * lenghtMultiplier));
+		FabrikBone3D littleFConnect = new FabrikBone3D(littleFConStart, littlefConEnd);
+		littleFConnect.setColour(baseColor);
+		FabrikChain3D littleFConChain = new FabrikChain3D();
+		littleFConChain.addBone(littleFConnect);
+		handStructureModel.addChain(littleFConChain);
+
+		// little MP
+		FabrikBone3D littleFBase = new FabrikBone3D(littleFBaseStart, littleFBaseEnd);
+		cols[4] = new Colour4f(Utils.MAGENTA);
+		littleFBase.setColour(cols[4].darken(0.4f));
+		littleF.setMaxIterationAttempts(10);
+		littleF.addBone(littleFBase);
+
+		// little PIP
+		littleF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[4].lighten(0.4f));
+		// little DIP
+		littleF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[4].darken(0.4f));
+		fingers[4] = littleF;
+		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, -25.0f);
+		littleF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 20.0f);
+		littleF.setFixedBaseMode(true);
+		handStructureModel.connectChain(littleF, 9, 0, BoneConnectionPoint.END);
+	}
+
+	/**
+	 * @param lenghtMultplier
+	 * @param boneDirection
+	 * @param handBaseBoneEnd
+	 * @param baseColor
+	 */
+	private void setupMiddleFinger(Vec3f handBaseBoneEnd, Colour4f baseColor) {
+		// middle Finger------------------------------------------------------------
+		Vec3f middelfFConEnd = new Vec3f(0.0f, 5.0f * lenghtMultiplier, 0.0f);
+		Vec3f middleFBaseStart = new Vec3f();
+		Vec3f middleFBaseEnd = middleFBaseStart.plus(boneDirection.times(5.0f * lenghtMultiplier));
+		FabrikBone3D middleFConnect = new FabrikBone3D(handBaseBoneEnd, middelfFConEnd);
+		middleFConnect.setColour(baseColor);
+		FabrikChain3D middleFConChain = new FabrikChain3D();
+		middleFConChain.addBone(middleFConnect);
+		handStructureModel.addChain(middleFConChain);
+		
+		// middlef MP
+		FabrikBone3D middleFBase = new FabrikBone3D(middleFBaseStart, middleFBaseEnd);
+		cols[2] = new Colour4f(Utils.MID_BLUE);
+		middleFBase.setColour(cols[2].lighten(0.4f));
+		middleF.setMaxIterationAttempts(10);
+		middleF.addBone(middleFBase);
+		// middle PIP
+		middleF.addConsecutiveHingedBone(boneDirection, 4.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[2].darken(0.4f));
+		// middle DIP
+		middleF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[2].lighten(0.4f));
+
+		fingers[2] = middleF;
+		middleF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, boneDirection, 15.0f);
+		middleF.setFixedBaseMode(true);
+		handStructureModel.connectChain(middleF, 5, 0, BoneConnectionPoint.END);
+	
+	}
+
+	/**
+	 * @param lenghtMultplier
+	 * @param boneDirection
+	 * @param handBaseBoneEnd
+	 * @param baseColor
+	 */
+	private void setupRingFinger(Vec3f handBaseBoneEnd, Colour4f baseColor) {
+		// ring finger------------------------------------------------------------
+		Vec3f ringFConnEnd = new Vec3f(2.5f * lenghtMultiplier, 4.0f * lenghtMultiplier, 0.0f);
+		Vec3f ringFBaseStart = new Vec3f();
+		Vec3f ringFBaseEnd = ringFBaseStart.plus(boneDirection.times(5.0f * lenghtMultiplier));
+		FabrikBone3D ringFConnect = new FabrikBone3D(handBaseBoneEnd, ringFConnEnd);
+		ringFConnect.setColour(baseColor);
+		FabrikChain3D ringFConChain = new FabrikChain3D();
+		ringFConChain.addBone(ringFConnect);
+		handStructureModel.addChain(ringFConChain);
+		
+		// ring MP
+		FabrikBone3D ringFBase = new FabrikBone3D(ringFBaseStart, ringFBaseEnd);
+		cols[3] = new Colour4f(Utils.CYAN);
+		ringFBase.setColour(cols[3].darken(0.8f));
+		ringF.setMaxIterationAttempts(10);
+		ringF.addBone(ringFBase);
+		// ring PIP
+		ringF.addConsecutiveHingedBone(boneDirection, 3.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[3].lighten(0.4f));
+		// ring DIP
+		ringF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
+				Y_AXIS, cols[3].darken(0.4f));
+		fingers[3] = ringF;
+		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, -15.0f);
+		ringF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 15.0f);
+		ringF.setFixedBaseMode(true);
+		handStructureModel.connectChain(ringF, 7, 0, BoneConnectionPoint.END);
 	}
 
 	public void updateStructurePos(FabrikStructure3D structure, Vec3f handBasePos) {
@@ -405,19 +525,24 @@ public class IkSolver {
 		Vector3f temp = handData.getHandBasePos();
 		temp.sub(new Vector3f(test.x, test.y, test.z));
 		Vec3f.subtract(delta, test);
-
-		// System.out.println(temp);
+		
 		int numChains = structure.getNumChains();
 		for (int i = 0; i < numChains; i++) {
 			FabrikChain3D chain = structure.getChain(i);
 			for (int k = 0; k < chain.getNumBones(); k++) {
-				FabrikBone3D bone = chain.getBone(k);
-				Vec3f sl = bone.getStartLocation();
-				Vec3f el = bone.getEndLocation();
-				Vec3f.add(sl, delta);
-				Vec3f.add(el, delta);
-				bone.setStartLocation(sl);
-				bone.setEndLocation(el);
+
+				try {
+					FabrikBone3D bone = chain.getBone(k);
+					//System.out.println(bone.getDirectionUV());
+					Vec3f sl = bone.getStartLocation();
+					Vec3f el = bone.getEndLocation();
+					Vec3f.add(sl, delta);
+					Vec3f.add(el, delta);
+					bone.setStartLocation(sl);
+					bone.setEndLocation(el);
+				} catch (Exception e) {
+					continue;
+				}
 			}
 		}
 	}
@@ -431,29 +556,36 @@ public class IkSolver {
 			calc.udpthreadRight.interrupt();
 			System.exit(0);
 		}
+		
 		try {
 			// Retrieve current Data
 			Vec2f[] rVec = calc.getDataset(0);
 			Vec2f[] lVec = calc.getDataset(1);
-			long er = calc.getEpochRight();
-			long el = calc.getEpochLeft();
-			long ed = el - er;
+			//System.out.println(calc.getHandAngleLeft());
+			//System.out.println(calc.getHandAngleRight());
+			// long er = calc.getEpochRight();
+			// long el = calc.getEpochLeft();
+			// long ed = el - er;
+			// System.out.println(ed);
+
 			// Calculate Z distance
 			for (int i = 0; i < rVec.length; i++) {
 
 				calculateDepthData(rVec, lVec, i);
 			}
-			try {
-				updateStructurePos(handStructureModel, handData.getCurrentFingerPos()[5]);
-			} catch (Exception e2) {
-				// TODO: handle exception
-			}
 
+			
+			try {
+				//calculateRealDistance(handData.getCurrentFingerPos()[5]));
+				updateStructurePos(handStructureModel, handData.getCurrentFingerPos()[5]);
+				//updateStructurePos(handStructureModel, calculateRealDistance(handData.getCurrentFingerPos()[5]));
+			} catch (Exception e2) {
+			}
 
 		} catch (Exception e) {
 			// System.out.println("No tracking data available. Please check network
 			// connections and System status before restart.");
-			
+
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_Q)) {
 
@@ -503,15 +635,14 @@ public class IkSolver {
 			viewMatrix = viewMatrix.translate(0.0f, 0.10f, 0.0f);
 			projectionViewMatrix = projectionViewMatrix.times(viewMatrix);
 		}
-		// if (KeyboardHandler.isKeyDown(GLFW_KEY_K)) {
-		// calc.mincutoffX-=0.001;
-		// System.out.println(calc.mincutoffX);
-		// }
-		// if (KeyboardHandler.isKeyDown(GLFW_KEY_L)) {
-		// calc.mincutoffX+=0.001;
-		// System.out.println(calc.mincutoffX);
-		// }
-		//
+		if (KeyboardHandler.isKeyDown(GLFW_KEY_K)) {
+			calc.mincutoffX -= 1.0 / 60;
+			System.out.println(calc.mincutoffX);
+		}
+		if (KeyboardHandler.isKeyDown(GLFW_KEY_L)) {
+			calc.mincutoffX += 1.0 / 60;
+			System.out.println(calc.mincutoffX);
+		}
 
 	}
 
@@ -522,14 +653,26 @@ public class IkSolver {
 	 */
 	private void calculateDepthData(Vec2f[] rightSideData, Vec2f[] leftSideData, int targetNumber) {
 		try {
-			float zDist = calc.calculateZDistance(rightSideData[targetNumber].x,
-					leftSideData[targetNumber].x);
-			targets[targetNumber] = new Vec3f(rightSideData[targetNumber].x, rightSideData[targetNumber].y, zDist);
+			float zDist = calc.calculateZDistance(rightSideData[targetNumber].x, leftSideData[targetNumber].x);
+			float targetX= (leftSideData[targetNumber].x+rightSideData[targetNumber].x)/2.0f;
+			float targetY= (leftSideData[targetNumber].y+rightSideData[targetNumber].y)/2.0f;
+			targets[targetNumber] = new Vec3f(targetX, targetY, zDist);
 			handData.updateCurrentFingerPos(targetNumber,
 					new Vec3f(rightSideData[targetNumber].x, rightSideData[targetNumber].y, zDist));
 		} catch (Exception e) {
+			System.out.println("Depth data calc error");
 			e.printStackTrace();
 		}
+	}
+
+	public Vec3f calculateRealDistance(Vec3f pixelPos) {
+		double height = pixelPos.z;
+		double correctionFactor = (90.0f - height) / 90.0f;
+		// System.out.println("cf:"+correctionFactor);
+		double correctedX = pixelConversionFactorX * correctionFactor;
+		// System.out.println("corr:"+corrected);
+		double correctedY = pixelConversionFactorY * correctionFactor;
+		return new Vec3f((float) correctedX, (float) correctedY, pixelPos.z);
 	}
 
 	private void loop() throws SocketException {
@@ -544,21 +687,13 @@ public class IkSolver {
 		int nbFrames = 0;
 		double lastTime = glfwGetTime();
 		while (!glfwWindowShouldClose(window)) {
-			double currentTime = glfwGetTime();
-			nbFrames++;
-			if (currentTime - lastTime >= 1.0) { // If last prinf() was more than 1 sec ago
-				// printf and reset timer
-				// System.out.printf("%f ms/frame\n", 1000.0 / (double) (nbFrames));
-				nbFrames = 0;
-				lastTime += 1.0;
-			}
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear buffers
 			// Draw reference coordinate system
-			 axis.draw(projectionViewMatrix);
+			axis.draw(projectionViewMatrix);
 			// Draw bone Coordinate systems
 			// structureAxis.draw(handStructureModel, projectionViewMatrix, viewMatrix);
 			for (int i = 0; i < fingers.length; i++) {
-				 try {
+				try {
 					drawTargetAndSolve(i);
 				} catch (Exception e) {
 					continue;
@@ -570,6 +705,7 @@ public class IkSolver {
 				FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block
+				System.out.println("hand model draw error");
 				e1.printStackTrace();
 				System.exit(0);
 			}
@@ -590,11 +726,16 @@ public class IkSolver {
 	private void drawTargetAndSolve(int i) {
 		try {
 			Point3D targetPoint = new Point3D();
-			targetPoint.draw(handData.getCurrentFingerPos()[i], Utils.GREEN, 10.0f, projectionViewMatrix);
-			handStructureModel.getChain(2 + (i * 2)).solveForTarget(handData.getCurrentFingerPos()[i]);
+			try {
+
+				targetPoint.draw(handData.getCurrentFingerPos()[i], Utils.GREEN, 10.0f, projectionViewMatrix);
+			} catch (Exception e) {
+			}
+			FabrikChain3D chainToSolveFor = handStructureModel.getChain(2 + (i * 2));
+			chainToSolveFor.solveForTarget(handData.getCurrentFingerPos()[i]);
 		} catch (Exception e) {
-			System.out.println("not solved");
-			e.printStackTrace();
+			// System.out.println("not solved");
+			// e.printStackTrace();
 		}
 	}
 

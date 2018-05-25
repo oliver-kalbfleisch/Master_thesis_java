@@ -48,6 +48,7 @@ public class HandData {
 	public Vec3f[] getCurrentFingerPos() {
 		return currentTrackerPos;
 	}
+	
 	public void setCurrentFingerPos(Vec3f[] currentFingerPos) {
 		this.currentTrackerPos = currentFingerPos;
 	}
