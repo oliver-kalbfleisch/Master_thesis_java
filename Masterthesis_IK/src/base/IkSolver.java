@@ -8,18 +8,17 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_R;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_K;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_L;
 import static org.lwjgl.glfw.GLFW.GLFW_RESIZABLE;
 import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
 import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
-import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.glfw.GLFW.glfwCreateWindow;
 import static org.lwjgl.glfw.GLFW.glfwDefaultWindowHints;
 import static org.lwjgl.glfw.GLFW.glfwDestroyWindow;
 import static org.lwjgl.glfw.GLFW.glfwGetPrimaryMonitor;
+import static org.lwjgl.glfw.GLFW.glfwGetTime;
+import static org.lwjgl.glfw.GLFW.glfwGetVersionString;
 import static org.lwjgl.glfw.GLFW.glfwGetVideoMode;
 import static org.lwjgl.glfw.GLFW.glfwGetWindowSize;
 import static org.lwjgl.glfw.GLFW.glfwInit;
@@ -47,7 +46,6 @@ import java.net.SocketException;
 import java.nio.IntBuffer;
 import java.util.concurrent.TimeUnit;
 
-import org.joml.Math;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWErrorCallback;
@@ -63,13 +61,11 @@ import au.edu.federation.caliko.FabrikChain3D;
 import au.edu.federation.caliko.FabrikChain3D.BaseboneConstraintType3D;
 import au.edu.federation.caliko.FabrikJoint3D.JointType;
 import au.edu.federation.caliko.FabrikStructure3D;
-import au.edu.federation.caliko.*;
+import au.edu.federation.caliko.visualisation.Axis;
+import au.edu.federation.caliko.visualisation.Camera;
 import au.edu.federation.caliko.visualisation.FabrikConstraint3D;
-import au.edu.federation.caliko.visualisation.FabrikLine3D;
-import au.edu.federation.caliko.visualisation.FabrikModel3D;
-import au.edu.federation.caliko.visualisation.Model;
+import au.edu.federation.caliko.visualisation.Grid;
 import au.edu.federation.caliko.visualisation.Point3D;
-import au.edu.federation.caliko.visualisation.*;
 import au.edu.federation.utils.Colour4f;
 import au.edu.federation.utils.Mat4f;
 import au.edu.federation.utils.Utils;
@@ -95,6 +91,7 @@ public class IkSolver {
 	private HandData handData = new HandData(6);
 	private Axis axis;
 	private Axis structureAxis;
+	private Grid baseGrid;
 	private OBJModel3D model;
 	private long window; // Window handle
 	private Camera camera;
@@ -108,7 +105,6 @@ public class IkSolver {
 
 	private Mat4f projectionMatrix = Mat4f.createPerspectiveProjectionMatrix(60.0f, (float) WIDTH / (float) HEIGHT,
 			1.0f, 10000.0f);
-	private Mat4f modelMatrix;
 	private Mat4f projectionViewMatrix;
 	private Mat4f viewMatrix = new Mat4f();
 	private FabrikStructure3D handStructureModel = new FabrikStructure3D();
@@ -164,7 +160,6 @@ public class IkSolver {
 	private void init() throws InterruptedException {
 
 		Colour4f baseColor = new Colour4f(Utils.BLACK);
-		
 
 		Vec3f handBaseBoneEnd = setupHandBase(baseColor);
 
@@ -206,43 +201,34 @@ public class IkSolver {
 		// calculate the real world distance one pixel covers at max depth
 		pixelConversionFactorX = (Math.tan(Math.toRadians(31.1f)) * 90) / 320.0f;
 		pixelConversionFactorY = (Math.tan(Math.toRadians(24.4f)) * 90) / 240.0f;
+		// Setup matrices for camera
 		viewMatrix.setIdentity();
 		Mat4f rotMat = new Mat4f();
 		rotMat.setIdentity();
 		rotMat = rotMat.rotateAboutLocalAxisDegs(90, Y_AXIS);
 		viewMatrix = viewMatrix.translate(0.0f, 0.0f, -90.0f);
 		projectionViewMatrix = projectionMatrix.times(viewMatrix);
+
 		// Init of UDP listening and data Calculation in separate thread
 		int numColors = 6;
-		
 		try {
 			setupStereoCalculator(numColors);
 		} catch (Exception e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
-
-		TimeUnit.SECONDS.sleep(2);
 		// Init targets
 		targets = new Vec3f[numColors];
 		for (int i = 0; i < targets.length; i++) {
 			targets[i] = new Vec3f(0, 0, 0);
 		}
 		glfwSetup();
-
-		try {
-			// Use loacal network broadcast address!!
-			BroadcastingClient.broadcast("master", InetAddress.getByName(BROADCASTIP));
-		} catch (Exception e) {
-			System.out.println("Could not send start signal to network, check Connection");
-			e.printStackTrace();
-		}
-		TimeUnit.SECONDS.sleep(5);
 		try {
 			GL.createCapabilities();
 			axis = new Axis(1000.0f, 2.0f);
-			structureAxis = new Axis(10.0f, 5.0f);
-			
+			baseGrid = new Grid(100.0f, 100.0f, 0.1f, 100);
+			// structureAxis = new Axis(5.0f, 1.0f);
+
 			try {
 				model = new OBJModel3D("cylinder_2.obj", 1.0f);
 			} catch (Exception e) {
@@ -254,11 +240,18 @@ public class IkSolver {
 			e.printStackTrace();
 			System.exit(0);
 		}
-	}
+		TimeUnit.SECONDS.sleep(5);
+		try {
+			// Use loacal network broadcast address!!
+			BroadcastingClient.broadcast("master", InetAddress.getByName(BROADCASTIP));
+		} catch (Exception e) {
+			System.out.println("Could not send start signal to network, check Connection");
+			e.printStackTrace();
+		}
 
-	/**
-	 * 
-	 */
+		
+
+	}
 	private void glfwSetup() {
 		// Setup an error callback. The default implementation // will print the error
 		// message in System.err.
@@ -324,11 +317,10 @@ public class IkSolver {
 	 */
 	private void setupThumb(Vec3f handBaseBoneEnd, Colour4f baseColor) {
 		// Thumb------------------------------------------------------------
-		Vec3f thumbConEnd = new Vec3f(-4.0f * lenghtMultiplier, 0.0f* lenghtMultiplier, 0.0f);
+		Vec3f thumbConEnd = new Vec3f(-4.0f * lenghtMultiplier, 0.0f * lenghtMultiplier, 0.0f);
 		FabrikBone3D thumbConnect = new FabrikBone3D(handBaseBoneEnd, thumbConEnd);
 		FabrikChain3D thumbConChain = new FabrikChain3D();
 		thumbConnect.setColour(baseColor);
-		thumbConnect.setBallJointConstraintDegs(0);
 		thumbConChain.addBone(thumbConnect);
 		thumbConChain.setFixedBaseMode(true);
 		handStructureModel.addChain(thumbConChain);
@@ -348,12 +340,9 @@ public class IkSolver {
 				Y_AXIS, cols[0].darken(0.4f));
 		fingers[0] = thumb;
 		thumb.setFixedBaseMode(true);
-		// umb.setLocalHingedBasebone(Y_AXIS, 90, 90, X_AXIS);
-		// thumb.setLocalHingedBasebone(boneDirection, 0, 90, X_AXIS);
 		Vec3f constraintAxis = Vec3f.rotateZDegs(boneDirection, 75.0f);
 		thumb.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, constraintAxis, 45.0f);
 		handStructureModel.connectChain(thumb, 1, 0, BoneConnectionPoint.END);
-
 	}
 
 	/**
@@ -468,7 +457,7 @@ public class IkSolver {
 		FabrikChain3D middleFConChain = new FabrikChain3D();
 		middleFConChain.addBone(middleFConnect);
 		handStructureModel.addChain(middleFConChain);
-		
+
 		// middlef MP
 		FabrikBone3D middleFBase = new FabrikBone3D(middleFBaseStart, middleFBaseEnd);
 		cols[2] = new Colour4f(Utils.MID_BLUE);
@@ -486,7 +475,7 @@ public class IkSolver {
 		middleF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, boneDirection, 15.0f);
 		middleF.setFixedBaseMode(true);
 		handStructureModel.connectChain(middleF, 5, 0, BoneConnectionPoint.END);
-	
+
 	}
 
 	/**
@@ -505,7 +494,7 @@ public class IkSolver {
 		FabrikChain3D ringFConChain = new FabrikChain3D();
 		ringFConChain.addBone(ringFConnect);
 		handStructureModel.addChain(ringFConChain);
-		
+
 		// ring MP
 		FabrikBone3D ringFBase = new FabrikBone3D(ringFBaseStart, ringFBaseEnd);
 		cols[3] = new Colour4f(Utils.CYAN);
@@ -519,7 +508,6 @@ public class IkSolver {
 		ringF.addConsecutiveHingedBone(boneDirection, 2.0f * lenghtMultiplier, JointType.LOCAL_HINGE, X_AXIS, 0, 95,
 				Y_AXIS, cols[3].darken(0.4f));
 		fingers[3] = ringF;
-		//Vec3f boneDirection = Vec3f.rotateZDegs(boneDirection, -15.0f);
 		ringF.setRotorBaseboneConstraint(BaseboneConstraintType3D.LOCAL_ROTOR, boneDirection, 15.0f);
 		ringF.setFixedBaseMode(true);
 		handStructureModel.connectChain(ringF, 7, 0, BoneConnectionPoint.END);
@@ -532,7 +520,7 @@ public class IkSolver {
 		Vector3f temp = handData.getHandBasePos();
 		temp.sub(new Vector3f(test.x, test.y, test.z));
 		Vec3f.subtract(delta, test);
-		
+
 		int numChains = structure.getNumChains();
 		for (int i = 0; i < numChains; i++) {
 			FabrikChain3D chain = structure.getChain(i);
@@ -540,7 +528,6 @@ public class IkSolver {
 
 				try {
 					FabrikBone3D bone = chain.getBone(k);
-					//System.out.println(bone.getDirectionUV());
 					Vec3f sl = bone.getStartLocation();
 					Vec3f el = bone.getEndLocation();
 					Vec3f.add(sl, delta);
@@ -554,7 +541,7 @@ public class IkSolver {
 		}
 	}
 
-	public void update() throws SocketException {
+	public void update() {
 
 		KeyboardHandler.isKeyDown(GLFW_KEY_ESCAPE);
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_ESCAPE)) {
@@ -563,35 +550,28 @@ public class IkSolver {
 			calc.udpthreadRight.interrupt();
 			System.exit(0);
 		}
-		
 		try {
 			// Retrieve current Data
 			Vec2f[] rVec = calc.getDataset(0);
 			Vec2f[] lVec = calc.getDataset(1);
-			//System.out.println(calc.getHandAngleLeft());
-			//System.out.println(calc.getHandAngleRight());
-			// long er = calc.getEpochRight();
-			// long el = calc.getEpochLeft();
-			// long ed = el - er;
-			// System.out.println(ed);
+			// only draw frames with max difference of 1 frame
+			long er = calc.getEpochRight();
+			long el = calc.getEpochLeft();
+			long ed = el - er;
+			if (Math.abs(ed) < 20.0) {
+				// Calculate Z distance
+				for (int i = 0; i < rVec.length; i++) {
 
-			// Calculate Z distance
-			for (int i = 0; i < rVec.length; i++) {
-
-				calculateDepthData(rVec, lVec, i);
+					calculateDepthData(rVec, lVec, i);
+				}
+				try {
+					updateStructurePos(handStructureModel, calculateRealDistance(handData.getCurrentFingerPos()[5]));
+				} catch (Exception e2) {
+				}
 			}
-
-			
-			try {
-				//System.out.println();
-				updateStructurePos(handStructureModel, calculateRealDistance(handData.getCurrentFingerPos()[5]));
-				//updateStructurePos(handStructureModel, calculateRealDistance(handData.getCurrentFingerPos()[5]));
-			} catch (Exception e2) {
-			}
-
 		} catch (Exception e) {
-			// System.out.println("No tracking data available. Please check network
-			// connections and System status before restart.");
+			System.out.println(
+					"No tracking data available. Please check network connections and System status before restart.");
 
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_Q)) {
@@ -642,15 +622,6 @@ public class IkSolver {
 			viewMatrix = viewMatrix.translate(0.0f, 0.10f, 0.0f);
 			projectionViewMatrix = projectionViewMatrix.times(viewMatrix);
 		}
-		if (KeyboardHandler.isKeyDown(GLFW_KEY_K)) {
-			calc.mincutoffX -= 1.0 / 60;
-			System.out.println(calc.mincutoffX);
-		}
-		if (KeyboardHandler.isKeyDown(GLFW_KEY_L)) {
-			calc.mincutoffX += 1.0 / 60;
-			System.out.println(calc.mincutoffX);
-		}
-
 	}
 
 	/**
@@ -661,8 +632,8 @@ public class IkSolver {
 	private void calculateDepthData(Vec2f[] rightSideData, Vec2f[] leftSideData, int targetNumber) {
 		try {
 			float zDist = calc.calculateZDistance(rightSideData[targetNumber].x, leftSideData[targetNumber].x);
-			float targetX= (leftSideData[targetNumber].x+rightSideData[targetNumber].x)/2.0f;
-			float targetY= (leftSideData[targetNumber].y+rightSideData[targetNumber].y)/2.0f;
+			float targetX = (leftSideData[targetNumber].x + rightSideData[targetNumber].x) / 2.0f;
+			float targetY = (leftSideData[targetNumber].y + rightSideData[targetNumber].y) / 2.0f;
 			targets[targetNumber] = new Vec3f(targetX, targetY, zDist);
 			handData.updateCurrentFingerPos(targetNumber,
 					new Vec3f(rightSideData[targetNumber].x, rightSideData[targetNumber].y, zDist));
@@ -675,8 +646,8 @@ public class IkSolver {
 	public Vec3f calculateRealDistance(Vec3f pixelPos) {
 		double height = pixelPos.z;
 		double correctionFactor = (90.0f - height) / 90.0f;
-		double correctedX = pixelConversionFactorX * correctionFactor*pixelPos.x;
-		double correctedY = pixelConversionFactorY * correctionFactor*pixelPos.y;
+		double correctedX = pixelConversionFactorX * correctionFactor * pixelPos.x;
+		double correctedY = pixelConversionFactorY * correctionFactor * pixelPos.y;
 		return new Vec3f((float) correctedX, (float) correctedY, pixelPos.z);
 	}
 
@@ -684,13 +655,10 @@ public class IkSolver {
 
 		// Set the clear color
 		glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
-
+		FabrikConstraint3D constraint = new FabrikConstraint3D();
 		// Run the rendering loop until the user has attempted to lose
 		// the window or has pressed the ESCAPE key.
 
-		FabrikConstraint3D constraint = new FabrikConstraint3D();
-		int nbFrames = 0;
-		double lastTime = glfwGetTime();
 		while (!glfwWindowShouldClose(window)) {
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear buffers
 			// Draw reference coordinate system
@@ -705,9 +673,9 @@ public class IkSolver {
 				}
 			}
 			try {
-				 model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix,
-				 Utils.RED);
-				//FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
+
+				model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix, Utils.BLACK);
+				// FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block
 				System.out.println("hand model draw error");
@@ -715,7 +683,7 @@ public class IkSolver {
 				System.exit(0);
 			}
 			// DEBUG
-			//constraint.draw(handStructureModel, 2.0f, projectionViewMatrix);
+			// constraint.draw(handStructureModel, 2.0f, projectionViewMatrix);
 			glfwSwapBuffers(window); // Swap color buff.
 
 			// Poll for window events. The key callback above will only be // invoked during
@@ -731,12 +699,12 @@ public class IkSolver {
 	private void drawTargetAndSolve(int i) {
 		try {
 			Point3D targetPoint = new Point3D();
-			Vec3f currPos=calculateRealDistance(handData.getCurrentFingerPos()[i]);
-			try {	
+			Vec3f currPos = calculateRealDistance(handData.getCurrentFingerPos()[i]);
+			try {
 				targetPoint.draw(currPos, Utils.GREEN, 10.0f, projectionViewMatrix);
 			} catch (Exception e) {
 			}
-			
+
 			FabrikChain3D chainToSolveFor = handStructureModel.getChain(2 + (i * 2));
 			chainToSolveFor.solveForTarget(currPos);
 		} catch (Exception e) {
