@@ -2,6 +2,7 @@ package base;
 
 import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_C;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_D;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
@@ -10,6 +11,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_R;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_S;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_H;
 import static org.lwjgl.glfw.GLFW.GLFW_RESIZABLE;
 import static org.lwjgl.glfw.GLFW.GLFW_TRUE;
 import static org.lwjgl.glfw.GLFW.GLFW_VISIBLE;
@@ -52,7 +54,9 @@ import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.openvr.VR;
 import org.lwjgl.system.MemoryStack;
+import org.w3c.dom.ElementTraversal;
 
 import Input.KeyboardHandler;
 import au.edu.federation.caliko.BoneConnectionPoint;
@@ -64,6 +68,7 @@ import au.edu.federation.caliko.FabrikStructure3D;
 import au.edu.federation.caliko.visualisation.Axis;
 import au.edu.federation.caliko.visualisation.Camera;
 import au.edu.federation.caliko.visualisation.FabrikConstraint3D;
+import au.edu.federation.caliko.visualisation.FabrikModel3D;
 import au.edu.federation.caliko.visualisation.Grid;
 import au.edu.federation.caliko.visualisation.Point3D;
 import au.edu.federation.utils.Colour4f;
@@ -71,6 +76,7 @@ import au.edu.federation.utils.Mat4f;
 import au.edu.federation.utils.Utils;
 import au.edu.federation.utils.Vec2f;
 import au.edu.federation.utils.Vec3f;
+import OpenVR.*;
 
 public class IkSolver {
 
@@ -93,6 +99,7 @@ public class IkSolver {
 	private Axis structureAxis;
 	private Grid baseGrid;
 	private OBJModel3D model;
+	private OBJModel3D trackingObjModel;
 	private long window; // Window handle
 	private Camera camera;
 	/** time at last frame */
@@ -117,25 +124,32 @@ public class IkSolver {
 
 	// Initialize fingers
 	// Thumb
-	FabrikChain3D thumb = new FabrikChain3D();
-	FabrikChain3D thumbConnectorChain = new FabrikChain3D();
+	private FabrikChain3D thumb = new FabrikChain3D();
+	private FabrikChain3D thumbConnectorChain = new FabrikChain3D();
 	// index finger
-	FabrikChain3D indexF = new FabrikChain3D();
-	Colour4f blue = new Colour4f(Utils.BLUE);
+	private FabrikChain3D indexF = new FabrikChain3D();
+	private Colour4f blue = new Colour4f(Utils.BLUE);
 	// middle Finger
-	FabrikChain3D middleF = new FabrikChain3D();
-	Colour4f yellow = new Colour4f(Utils.YELLOW);
+	private FabrikChain3D middleF = new FabrikChain3D();
+	private Colour4f yellow = new Colour4f(Utils.YELLOW);
 	// ring Finger
-	FabrikChain3D ringF = new FabrikChain3D();
-	Colour4f cyan = new Colour4f(Utils.CYAN);
+	private FabrikChain3D ringF = new FabrikChain3D();
+	private Colour4f cyan = new Colour4f(Utils.CYAN);
 	// little Finger
-	FabrikChain3D littleF = new FabrikChain3D();
-	Colour4f magenta = new Colour4f(Utils.MAGENTA);
-	FabrikBone3D handBase;
-	FabrikChain3D handBaseChain = new FabrikChain3D();
+	private FabrikChain3D littleF = new FabrikChain3D();
+	private Colour4f magenta = new Colour4f(Utils.MAGENTA);
+	private FabrikBone3D handBase;
+	private FabrikChain3D handBaseChain = new FabrikChain3D();
+	// bone for object representation
+	private FabrikBone3D trackingObjBone;
+	private boolean trackerCalibrated = false;
+	private Vec3f objectCalibrationPos= new Vec3f();
 
 	// STEREO STUFF
-	StereoCalculator calc;
+	private StereoCalculator calc;
+
+	// Tracking stuff
+	private TrackedObjectComponent htcVivetracker;
 
 	public void run() throws SocketException, InterruptedException { // Create our chain
 
@@ -159,6 +173,18 @@ public class IkSolver {
 
 	private void init() throws InterruptedException {
 
+		try {
+			SimpleOpenVRWrapper.initOpenVR();
+		} catch (Exception e2) {
+			System.err.println("init openvr wrapper failed");
+			e2.printStackTrace();
+		}
+		try {
+			htcVivetracker = new TrackedObjectComponent(VR.ETrackedDeviceClass_TrackedDeviceClass_GenericTracker);
+		} catch (Exception e2) {
+			System.err.println("init of tracker failed");
+			e2.printStackTrace();
+		}
 		Colour4f baseColor = new Colour4f(Utils.BLACK);
 
 		Vec3f handBaseBoneEnd = setupHandBase(baseColor);
@@ -197,6 +223,11 @@ public class IkSolver {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
+		try {
+			setupTrackedObject();
+		} catch (Exception e) {
+			// TODO: handle exception
+		}
 
 		// calculate the real world distance one pixel covers at max depth
 		pixelConversionFactorX = (Math.tan(Math.toRadians(31.1f)) * 90) / 320.0f;
@@ -231,9 +262,10 @@ public class IkSolver {
 
 			try {
 				model = new OBJModel3D("cylinder_2.obj", 1.0f);
+				trackingObjModel = new OBJModel3D("lowpoly_torous.obj", 1.0f);
 			} catch (Exception e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
+				System.exit(-1);
 			}
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
@@ -249,9 +281,8 @@ public class IkSolver {
 			e.printStackTrace();
 		}
 
-		
-
 	}
+
 	private void glfwSetup() {
 		// Setup an error callback. The default implementation // will print the error
 		// message in System.err.
@@ -290,6 +321,12 @@ public class IkSolver {
 		glfwSwapInterval(1);
 		// Make the window visible
 		glfwShowWindow(window);
+	}
+
+	private void setupTrackedObject() {
+		Vec3f objBase = new Vec3f(10.0f, 0.0f, 0.0f);
+		Vec3f objEnd = new Vec3f(10.0f, 0.0f, 1.0f);
+		trackingObjBone = new FabrikBone3D(objBase, objEnd);
 	}
 
 	/**
@@ -513,6 +550,17 @@ public class IkSolver {
 		handStructureModel.connectChain(ringF, 7, 0, BoneConnectionPoint.END);
 	}
 
+	public void updateTrackedObjectPosition() {
+		// //TODO get object position
+		Mat4f mat = htcVivetracker.lastTrackingResult;
+		//reordered Axis components to match optical axis system
+		Vec3f tempVec= new Vec3f(mat.m03-objectCalibrationPos.x,mat.m13-objectCalibrationPos.y,mat.m23-objectCalibrationPos.z);
+		Vec3f trans= new Vec3f(tempVec.z*100.0f,tempVec.x*100.0f,tempVec.y*100.0f);
+		trackingObjBone.setStartLocation(trans);
+		Vec3f.add(trans, new Vec3f(0.0f,0.0f,1.0f));
+		trackingObjBone.setEndLocation(trans);
+	}
+
 	public void updateStructurePos(FabrikStructure3D structure, Vec3f handBasePos) {
 		Vec3f delta = handBasePos;
 		handData.setHandBasePos(new Vector3f(handBasePos.x, handBasePos.y, handBasePos.z));
@@ -550,6 +598,7 @@ public class IkSolver {
 			calc.udpthreadRight.interrupt();
 			System.exit(0);
 		}
+
 		try {
 			// Retrieve current Data
 			Vec2f[] rVec = calc.getDataset(0);
@@ -570,8 +619,9 @@ public class IkSolver {
 				}
 			}
 		} catch (Exception e) {
-			System.out.println(
-					"No tracking data available. Please check network connections and System status before restart.");
+			// System.out.println(
+			// "No tracking data available. Please check network connections and System
+			// status before restart.");
 
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_Q)) {
@@ -622,6 +672,34 @@ public class IkSolver {
 			viewMatrix = viewMatrix.translate(0.0f, 0.10f, 0.0f);
 			projectionViewMatrix = projectionViewMatrix.times(viewMatrix);
 		}
+		if (KeyboardHandler.isKeyDown(GLFW_KEY_C)) {
+
+			
+			if (!trackerCalibrated) {
+				Mat4f mat = htcVivetracker.lastTrackingResult;
+				objectCalibrationPos = new Vec3f(mat.m03, mat.m13, mat.m23);
+				trackerCalibrated=true;
+			}
+			
+		}
+		if (KeyboardHandler.isKeyDown(GLFW_KEY_H)) {
+
+			System.out.println(htcVivetracker.lastTrackingResult);
+		}
+		try {
+			SimpleOpenVRWrapper.update();
+		} catch (Exception e) {
+			System.err.println("OpenVr wrapper update failed");
+			e.printStackTrace();
+		}
+		try {
+			htcVivetracker.update();
+		} catch (Exception e) {
+			System.err.println("Vive Tracker update failed");
+			e.printStackTrace();
+		}
+		updateTrackedObjectPosition();
+
 	}
 
 	/**
@@ -667,14 +745,21 @@ public class IkSolver {
 			// structureAxis.draw(handStructureModel, projectionViewMatrix, viewMatrix);
 			for (int i = 0; i < fingers.length; i++) {
 				try {
-					drawTargetAndSolve(i);
+					//drawTargetAndSolve(i);
 				} catch (Exception e) {
 					continue;
 				}
 			}
 			try {
 
-				model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix, Utils.BLACK);
+				// model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix,
+				// Utils.BLACK);
+				try {
+					trackingObjModel.drawBone(trackingObjBone, projectionViewMatrix, viewMatrix, Utils.RED);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
 				// FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block
