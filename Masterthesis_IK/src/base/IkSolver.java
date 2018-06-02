@@ -143,7 +143,7 @@ public class IkSolver {
 	// bone for object representation
 	private FabrikBone3D trackingObjBone;
 	private boolean trackerCalibrated = false;
-	private Vec3f objectCalibrationPos= new Vec3f();
+	private Vec3f objectCalibrationPos = new Vec3f();
 
 	// STEREO STUFF
 	private StereoCalculator calc;
@@ -172,19 +172,13 @@ public class IkSolver {
 	}
 
 	private void init() throws InterruptedException {
-
-		try {
-			SimpleOpenVRWrapper.initOpenVR();
-		} catch (Exception e2) {
-			System.err.println("init openvr wrapper failed");
-			e2.printStackTrace();
-		}
-		try {
-			htcVivetracker = new TrackedObjectComponent(VR.ETrackedDeviceClass_TrackedDeviceClass_GenericTracker);
-		} catch (Exception e2) {
-			System.err.println("init of tracker failed");
-			e2.printStackTrace();
-		}
+		/*
+		 * try { SimpleOpenVRWrapper.initOpenVR(); } catch (Exception e2) {
+		 * System.err.println("init openvr wrapper failed"); e2.printStackTrace(); } try
+		 * { htcVivetracker = new TrackedObjectComponent(VR.
+		 * ETrackedDeviceClass_TrackedDeviceClass_GenericTracker); } catch (Exception
+		 * e2) { System.err.println("init of tracker failed"); e2.printStackTrace(); }
+		 */
 		Colour4f baseColor = new Colour4f(Utils.BLACK);
 
 		Vec3f handBaseBoneEnd = setupHandBase(baseColor);
@@ -553,11 +547,12 @@ public class IkSolver {
 	public void updateTrackedObjectPosition() {
 		// //TODO get object position
 		Mat4f mat = htcVivetracker.lastTrackingResult;
-		//reordered Axis components to match optical axis system
-		Vec3f tempVec= new Vec3f(mat.m03-objectCalibrationPos.x,mat.m13-objectCalibrationPos.y,mat.m23-objectCalibrationPos.z);
-		Vec3f trans= new Vec3f(tempVec.z*100.0f,tempVec.x*100.0f,tempVec.y*100.0f);
+		// reordered Axis components to match optical axis system
+		Vec3f tempVec = new Vec3f(mat.m03 - objectCalibrationPos.x, mat.m13 - objectCalibrationPos.y,
+				mat.m23 - objectCalibrationPos.z);
+		Vec3f trans = new Vec3f(tempVec.z * 100.0f, tempVec.x * 100.0f, tempVec.y * 100.0f);
 		trackingObjBone.setStartLocation(trans);
-		Vec3f.add(trans, new Vec3f(0.0f,0.0f,1.0f));
+		Vec3f.add(trans, new Vec3f(0.0f, 0.0f, 1.0f));
 		trackingObjBone.setEndLocation(trans);
 	}
 
@@ -601,13 +596,16 @@ public class IkSolver {
 
 		try {
 			// Retrieve current Data
-			Vec2f[] rVec = calc.getDataset(0);
-			Vec2f[] lVec = calc.getDataset(1);
-			// only draw frames with max difference of 1 frame
+			calc.getDatasetFiltered(0);
+			calc.getDatasetFiltered(1);
 			long er = calc.getEpochRight();
 			long el = calc.getEpochLeft();
 			long ed = el - er;
 			if (Math.abs(ed) < 20.0) {
+			Vec2f[] rVec = calc.getDatasetUnfiltered(0);
+			Vec2f[] lVec = calc.getDatasetUnfiltered(1);
+			// only draw frames with max difference of 1 frame
+			
 				// Calculate Z distance
 				for (int i = 0; i < rVec.length; i++) {
 
@@ -619,9 +617,11 @@ public class IkSolver {
 				}
 			}
 		} catch (Exception e) {
+			e.printStackTrace();
+
 			// System.out.println(
 			// "No tracking data available. Please check network connections and System
-			// status before restart.");
+			// status before restart.");"
 
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_Q)) {
@@ -674,32 +674,24 @@ public class IkSolver {
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_C)) {
 
-			
 			if (!trackerCalibrated) {
 				Mat4f mat = htcVivetracker.lastTrackingResult;
 				objectCalibrationPos = new Vec3f(mat.m03, mat.m13, mat.m23);
-				trackerCalibrated=true;
+				trackerCalibrated = true;
 			}
-			
+
 		}
 		if (KeyboardHandler.isKeyDown(GLFW_KEY_H)) {
 
 			System.out.println(htcVivetracker.lastTrackingResult);
 		}
-		try {
-			SimpleOpenVRWrapper.update();
-		} catch (Exception e) {
-			System.err.println("OpenVr wrapper update failed");
-			e.printStackTrace();
-		}
-		try {
-			htcVivetracker.update();
-		} catch (Exception e) {
-			System.err.println("Vive Tracker update failed");
-			e.printStackTrace();
-		}
-		updateTrackedObjectPosition();
-
+		/*
+		 * try { SimpleOpenVRWrapper.update(); } catch (Exception e) {
+		 * System.err.println("OpenVr wrapper update failed"); e.printStackTrace(); }
+		 * try { htcVivetracker.update(); } catch (Exception e) {
+		 * System.err.println("Vive Tracker update failed"); e.printStackTrace(); }
+		 * updateTrackedObjectPosition();
+		 */
 	}
 
 	/**
@@ -709,6 +701,7 @@ public class IkSolver {
 	 */
 	private void calculateDepthData(Vec2f[] rightSideData, Vec2f[] leftSideData, int targetNumber) {
 		try {
+
 			float zDist = calc.calculateZDistance(rightSideData[targetNumber].x, leftSideData[targetNumber].x);
 			float targetX = (leftSideData[targetNumber].x + rightSideData[targetNumber].x) / 2.0f;
 			float targetY = (leftSideData[targetNumber].y + rightSideData[targetNumber].y) / 2.0f;
@@ -745,21 +738,19 @@ public class IkSolver {
 			// structureAxis.draw(handStructureModel, projectionViewMatrix, viewMatrix);
 			for (int i = 0; i < fingers.length; i++) {
 				try {
-					//drawTargetAndSolve(i);
+					drawTargetAndSolve(i);
 				} catch (Exception e) {
 					continue;
 				}
 			}
 			try {
 
-				// model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix,
-				// Utils.BLACK);
-				try {
-					trackingObjModel.drawBone(trackingObjBone, projectionViewMatrix, viewMatrix, Utils.RED);
-				} catch (Exception e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+				model.drawStructure(handStructureModel, projectionViewMatrix, viewMatrix, Utils.BLACK);
+				/*
+				 * try { trackingObjModel.drawBone(trackingObjBone, projectionViewMatrix,
+				 * viewMatrix, Utils.RED); } catch (Exception e) { // TODO Auto-generated catch
+				 * block e.printStackTrace(); }
+				 */
 				// FabrikLine3D.draw(handStructureModel, 1.0f, projectionViewMatrix);
 			} catch (Exception e1) {
 				// TODO Auto-generated catch block

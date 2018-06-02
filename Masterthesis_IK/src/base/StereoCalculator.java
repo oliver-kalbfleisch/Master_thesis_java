@@ -11,8 +11,10 @@ import au.edu.federation.utils.Vec2f;
 public class StereoCalculator {
 	private int udpPortLeft;
 	private int udpPortRight;
-	private Vec2f[] coordinateSetsLeft;
-	private Vec2f[] coordinateSetsRight;
+	private Vec2f[] coordinateSetsLeftFiltered;
+	private Vec2f[] coordinateSetsRightFiltered;
+	private Vec2f[] coordinateSetsLeftUnfiltered;
+	private Vec2f[] coordinateSetsRightUnfiltered;
 	private float handAngleLeft = 0.0f;
 	private float handAngleRight = 0.0f;
 	private static final ReentrantReadWriteLock lockLeft = new ReentrantReadWriteLock(true);
@@ -34,14 +36,18 @@ public class StereoCalculator {
 	public StereoCalculator(int numElements) {
 		this.udpPortLeft = 8888;
 		this.udpPortRight = 9999;
-		this.coordinateSetsLeft = new Vec2f[numElements];
-		this.coordinateSetsRight = new Vec2f[numElements];
-		for (int i = 0; i < coordinateSetsLeft.length; i++) {
-			coordinateSetsLeft[i] = new Vec2f(0, 0);
-			coordinateSetsRight[i] = new Vec2f(0, 0);
+		this.coordinateSetsLeftFiltered = new Vec2f[numElements];
+		this.coordinateSetsRightFiltered = new Vec2f[numElements];
+		this.coordinateSetsLeftUnfiltered= new Vec2f[numElements];
+		this.coordinateSetsRightUnfiltered= new Vec2f[numElements];
+		for (int i = 0; i < coordinateSetsLeftFiltered.length; i++) {
+			coordinateSetsLeftFiltered[i] = new Vec2f(0, 0);
+			coordinateSetsRightFiltered[i] = new Vec2f(0, 0);
+			coordinateSetsLeftUnfiltered[i] = new Vec2f(0, 0);
+			coordinateSetsRightUnfiltered[i] = new Vec2f(0, 0);
 		}
 		this.fingerfilters = new ValueFilter[numElements];
-		this.depthFilter = new ValueFilter(frequency, 0.0001, 0.001);
+		this.depthFilter = new ValueFilter(frequency,0.01, 0.00001);
 		for (int i = 0; i < fingerfilters.length; i++) {
 			fingerfilters[i] = new ValueFilter(frequency, 1.0, 0.0, 1.0, 0.0);
 		}
@@ -111,9 +117,6 @@ public class StereoCalculator {
 						lock.writeLock().lock();
 						udpMessageLeft = msg;
 						epochLeft = Long.parseLong(msg.substring(msg.length() - 14, msg.length() - 1));
-
-						udpMessageLeft = msg;
-
 					} finally {
 						lock.writeLock().unlock();
 					}
@@ -175,7 +178,6 @@ public class StereoCalculator {
 						lock.writeLock().lock();
 						udpMessageRight = msg;
 						epochRight = Long.parseLong(msg.substring(msg.length() - 14, msg.length() - 1));
-						udpMessageRight = msg;
 
 					} finally {
 						lock.writeLock().unlock();
@@ -378,10 +380,10 @@ public class StereoCalculator {
 	 * @param parts
 	 *            The split parts of the received UDP String message containing the
 	 *            tracking data
-	 * @param coordinateSet
+	 * @param coordinateSetFiltered
 	 *            The 2D vector into which the extracted data will be written
 	 */
-	private void processMessage(String[] parts, Vec2f[] coordinateSet, float angle) {
+	private void processMessage(String[] parts, Vec2f[] coordinateSetFiltered, Vec2f[] coordinateSetUnfiltered,float angle) {
 
 		for (int i = 0; i < parts.length - 2; i++) {
 			String[] values = parts[i].split(",");
@@ -396,32 +398,43 @@ public class StereoCalculator {
 			} catch (NumberFormatException e1) {
 				e1.printStackTrace();
 			}
+			
+			//save unfiltered values for depth calculation
+			 float currentX = (float) -(xVal - (CAMERA_IMAGE_WIDTH / 2.0));
+		     float currentY = (float) (yVal - (CAMERA_IMAGE_HEIGHT / 2.0));
+			// Filter out jumps in tracking data
+			try {
+				coordinateSetUnfiltered[i].x = currentX;
+				coordinateSetUnfiltered[i].y = currentY;
+
+			} catch (ArrayIndexOutOfBoundsException ae) {
+				ae.printStackTrace();
+			}
 			OneEuroFilter currPosFilterX = fingerfilters[i].getFilterX();
 			OneEuroFilter currPosFilterY = fingerfilters[i].getFilterY();
-			float currentX = 0;
+			//Filter values for Visualization
 			try {
 				currentX = (float) currPosFilterX.filter(-(xVal - (CAMERA_IMAGE_WIDTH / 2.0)));
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
-			float currentY = 0;
 			try {
 				currentY = (float) currPosFilterY.filter((yVal - (CAMERA_IMAGE_HEIGHT / 2.0)));
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
-			//Debuging for pure position data
-			// float currentX = (float) -(xVal - (CAMERA_IMAGE_WIDTH / 2.0));
-			// float currentY = (float) (yVal - (CAMERA_IMAGE_HEIGHT / 2.0));
-			// Filter out jumps in tracking data
 			try {
-				coordinateSet[i].x = currentX;
-				coordinateSet[i].y = currentY;
+				coordinateSetFiltered[i].x = currentX;
+				coordinateSetFiltered[i].y = currentY;
 
 			} catch (ArrayIndexOutOfBoundsException ae) {
 
 			}
 		}
+	}
+	private void filterDataset()
+	{
+		
 	}
 
 	private float calculateCameraUpdateFrequency(int side) {
@@ -449,7 +462,7 @@ public class StereoCalculator {
 	 * @param cameraSide
 	 * @return
 	 */
-	public Vec2f[] getDataset(int cameraSide) {
+	public Vec2f[] getDatasetFiltered(int cameraSide) {
 		switch (cameraSide) {
 		// left camera
 		case 0:
@@ -460,8 +473,13 @@ public class StereoCalculator {
 			// Extract hand angle
 			handAngleLeft = Float.parseFloat((partsL[partsL.length - 2]));
 			// extract other values
-			processMessage(partsL, coordinateSetsLeft, handAngleLeft);
-			return coordinateSetsLeft;
+			try {
+				processMessage(partsL, coordinateSetsLeftFiltered,coordinateSetsLeftUnfiltered, handAngleLeft);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return coordinateSetsLeftFiltered;
 		// right camera
 		case 1:
 			lockRight.readLock().lock();
@@ -471,13 +489,27 @@ public class StereoCalculator {
 			// Extract hand angle
 			handAngleRight = Float.parseFloat((partsR[partsR.length - 2]));
 			// extract other values
-			processMessage(partsR, coordinateSetsRight, handAngleRight);
-			return coordinateSetsRight;
+			processMessage(partsR, coordinateSetsRightFiltered,coordinateSetsRightUnfiltered, handAngleRight);
+			return coordinateSetsRightFiltered;
 		default:
 			System.out.println("invalid camera input parameter " + cameraSide);
 			return new Vec2f[0];
 		}
 
+	}
+	public Vec2f[] getDatasetUnfiltered(int cameraSide)
+	{
+		switch (cameraSide) {
+		// left camera
+		case 0:
+			return coordinateSetsLeftUnfiltered;
+		// right camera
+		case 1:
+			return coordinateSetsRightUnfiltered;
+		default:
+			System.out.println("invalid camera input parameter " + cameraSide);
+			return new Vec2f[0];
+		}
 	}
 
 	/*
@@ -493,25 +525,24 @@ public class StereoCalculator {
 	public float calculateZDistance(float rightX, float leftX)
 
 	{
-
 		// compensated Calculation formula Z=k*d^z
 		double k = 4543.320129238;
 		double z = -1.0354229928;
-		double disparity = rightX - leftX;
+		double disparity =Math.abs(rightX - leftX);
 		try {
 			disparity = depthFilter.getFilterX().filter(disparity);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		double calculatedZDistance = k * (1.0 / (Math.pow(Math.abs(disparity), -z)));
-
 		// Clamp depth ranges to known values of the tracking space
 		calculatedZDistance = clamp(0.0, 90.0, calculatedZDistance);
 		// Coarse value Filtering
 		if (!Double.isNaN(calculatedZDistance)) {
+			System.out.println(-calculatedZDistance + zeroPlaneOffset);
 			return (float) (-calculatedZDistance + zeroPlaneOffset);
 		}
-		return 0.0f;
+		return -1.0f;
 	}
 
 	private double clamp(double min, double max, double value) {
@@ -535,12 +566,12 @@ public class StereoCalculator {
 		udpPortRight = uDPPortRight;
 	}
 	public Vec2f[] getCoordinateSetsLeft() {
-		return coordinateSetsLeft;
+		return coordinateSetsLeftFiltered;
 
 	}
 
 	public Vec2f[] getCoordinateSetsRight() {
-		return coordinateSetsRight;
+		return coordinateSetsRightFiltered;
 	}
 
 	public long getEpochRight() {
